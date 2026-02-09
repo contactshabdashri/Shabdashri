@@ -7,6 +7,8 @@ import type { Product } from "@/data/products";
 import {
   generateUPIPaymentString,
   generateUPIDeeplink,
+  generateGPayDeeplink,
+  generatePhonePeDeeplink,
   formatTransactionNote,
 } from "@/lib/upi";
 
@@ -58,10 +60,30 @@ export function PaymentModal({ product, isOpen, onClose }: PaymentModalProps) {
     return generateUPIDeeplink(product.price, transactionNote);
   }, [product?.price, product?.title]);
 
+  const gpayDeeplink = useMemo(() => {
+    if (!product) return "";
+    const transactionNote = formatTransactionNote(product.title);
+    return generateGPayDeeplink(product.price, transactionNote);
+  }, [product?.price, product?.title]);
+
+  const phonePeDeeplink = useMemo(() => {
+    if (!product) return "";
+    const transactionNote = formatTransactionNote(product.title);
+    return generatePhonePeDeeplink(product.price, transactionNote);
+  }, [product?.price, product?.title]);
+
   if (!isOpen || !product) return null;
 
   const handleUPIClick = () => {
     window.location.href = upiDeeplink;
+  };
+
+  const handleGPayClick = () => {
+    window.location.href = gpayDeeplink;
+  };
+
+  const handlePhonePeClick = () => {
+    window.location.href = phonePeDeeplink;
   };
 
   const handleWhatsAppClick = () => {
@@ -139,15 +161,25 @@ export function PaymentModal({ product, isOpen, onClose }: PaymentModalProps) {
               Pay ₹{product.price} Only via UPI
             </p>
             
-            {/* UPI Deep Link Button */}
-            <Button
-              variant="outline"
-              className="mt-3 gap-2"
-              onClick={handleUPIClick}
-            >
-              <Smartphone className="h-4 w-4" />
-              Pay via UPI App
-            </Button>
+            {/* Payment App Buttons */}
+            <div className="mt-4 flex flex-col sm:flex-row gap-3">
+              <Button
+                variant="outline"
+                className="flex-1 gap-2"
+                onClick={handleGPayClick}
+              >
+                <Smartphone className="h-4 w-4" />
+                Pay with GPay
+              </Button>
+              <Button
+                variant="outline"
+                className="flex-1 gap-2"
+                onClick={handlePhonePeClick}
+              >
+                <Smartphone className="h-4 w-4" />
+                Pay with PhonePe
+              </Button>
+            </div>
           </div>
 
           {/* Warning */}

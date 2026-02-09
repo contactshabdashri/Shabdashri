@@ -45,6 +45,62 @@ export function generateUPIDeeplink(
 }
 
 /**
+ * Generate GPay deep link URL
+ * Opens Google Pay app directly
+ * Format: tez://upi/pay?pa=<UPI_ID>&pn=<MERCHANT_NAME>&am=<AMOUNT>&cu=INR&tn=<TRANSACTION_NOTE>
+ */
+export function generateGPayDeeplink(
+  amount: number,
+  transactionNote: string
+): string {
+  if (!UPI_ID) {
+    console.warn("VITE_UPI_ID not configured. Using placeholder.");
+  }
+
+  // Format amount to 2 decimal places
+  const formattedAmount = amount.toFixed(2);
+
+  // Encode parameters
+  const params = new URLSearchParams({
+    pa: UPI_ID || "placeholder@upi",
+    pn: MERCHANT_NAME,
+    am: formattedAmount,
+    cu: "INR",
+    tn: transactionNote,
+  });
+
+  return `tez://upi/pay?${params.toString()}`;
+}
+
+/**
+ * Generate PhonePe deep link URL
+ * Opens PhonePe app directly
+ * Format: phonepe://pay?pa=<UPI_ID>&pn=<MERCHANT_NAME>&am=<AMOUNT>&cu=INR&tn=<TRANSACTION_NOTE>
+ */
+export function generatePhonePeDeeplink(
+  amount: number,
+  transactionNote: string
+): string {
+  if (!UPI_ID) {
+    console.warn("VITE_UPI_ID not configured. Using placeholder.");
+  }
+
+  // Format amount to 2 decimal places
+  const formattedAmount = amount.toFixed(2);
+
+  // Encode parameters
+  const params = new URLSearchParams({
+    pa: UPI_ID || "placeholder@upi",
+    pn: MERCHANT_NAME,
+    am: formattedAmount,
+    cu: "INR",
+    tn: transactionNote,
+  });
+
+  return `phonepe://pay?${params.toString()}`;
+}
+
+/**
  * Format transaction note for product purchase
  */
 export function formatTransactionNote(productTitle: string): string {
