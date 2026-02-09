@@ -62,8 +62,8 @@ export function generateGPayDeeplink(
 
   // Encode parameters
   const params = new URLSearchParams({
-    pa: UPI_ID || "placeholder@upi",
-    pn: MERCHANT_NAME,
+    pa: UPI_ID || "vaishnavipawar5050@okicici",
+    pn: MERCHANT_NAME + "Vaishnavi Pawar",
     am: formattedAmount,
     cu: "INR",
     tn: transactionNote,
@@ -90,8 +90,8 @@ export function generatePhonePeDeeplink(
 
   // Encode parameters
   const params = new URLSearchParams({
-    pa: UPI_ID || "placeholder@upi",
-    pn: MERCHANT_NAME,
+    pa: UPI_ID || "vaishnavipawar5050@okicici",
+    pn: MERCHANT_NAME + "Vaishnavi Pawar",
     am: formattedAmount,
     cu: "INR",
     tn: transactionNote,

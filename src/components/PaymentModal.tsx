@@ -94,7 +94,7 @@ export function PaymentModal({ product, isOpen, onClose }: PaymentModalProps) {
     const message = encodeURIComponent(
       `Hi, I have paid ₹${product.price} for PSD design: ${product.title}. Please share the file.`
     );
-    window.open(`https://wa.me/917775025777?text=${message}`, "_blank");
+    window.open(`https://wa.me/918767980311?text=${message}`, "_blank");
     onClose();
     setIsConfirmed(false);
     setShowError(false);
