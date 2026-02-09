@@ -41,6 +41,7 @@ export function ProductForm({ product, onSuccess, onCancel }: ProductFormProps) 
     setValue,
     watch,
   } = useForm<ProductInsert>({
+    mode: "onChange",
     defaultValues: product
       ? {
           title: product.title,
@@ -85,7 +86,7 @@ export function ProductForm({ product, onSuccess, onCancel }: ProductFormProps) 
 
   useEffect(() => {
     if (selectedSubcategory) {
-      setValue("subcategory_id", selectedSubcategory);
+      setValue("subcategory_id", selectedSubcategory, { shouldValidate: true });
     }
   }, [selectedSubcategory, setValue]);
 
@@ -147,6 +148,19 @@ export function ProductForm({ product, onSuccess, onCancel }: ProductFormProps) 
     setLoading(true);
     setUploading(false);
     
+    // Validate subcategory is selected
+    if (!selectedSubcategory) {
+      alert("Please select a subcategory before saving the product.");
+      setLoading(false);
+      return;
+    }
+
+    // Ensure subcategory_id is set
+    if (!data.subcategory_id) {
+      setValue("subcategory_id", selectedSubcategory);
+      data.subcategory_id = selectedSubcategory;
+    }
+    
     try {
       let imageUrl = data.preview_image;
 
@@ -176,11 +190,33 @@ export function ProductForm({ product, onSuccess, onCancel }: ProductFormProps) 
         return;
       }
 
-      // Update data with the image URL
+      // Find the category_id from the selected subcategory
+      const selectedSubcategoryObj = subcategories.find(s => s.id === selectedSubcategory);
+      if (!selectedSubcategoryObj) {
+        alert("Invalid subcategory selected. Please select a valid subcategory.");
+        setLoading(false);
+        return;
+      }
+
+      // Update data with the image URL, subcategory_id, and category_id
       const productData: ProductInsert = {
         ...data,
+        subcategory_id: selectedSubcategory || data.subcategory_id, // Ensure it's set
+        category_id: selectedSubcategoryObj.category_id, // Derive category_id from subcategory
         preview_image: imageUrl,
       };
+
+      // Final validation - ensure subcategory_id and category_id are present
+      if (!productData.subcategory_id) {
+        alert("Please select a subcategory before saving");
+        setLoading(false);
+        return;
+      }
+      if (!productData.category_id) {
+        alert("Unable to determine category. Please select a subcategory.");
+        setLoading(false);
+        return;
+      }
 
       if (product) {
         await updateProduct(product.id, productData);
@@ -188,9 +224,15 @@ export function ProductForm({ product, onSuccess, onCancel }: ProductFormProps) 
         await createProduct(productData);
       }
       onSuccess();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error saving product:", error);
-      alert("Failed to save product. Please try again.");
+      if (error?.message?.includes("null value") || 
+          error?.message?.includes("category_id") || 
+          error?.message?.includes("subcategory_id")) {
+        alert("Please select a category and subcategory before saving the product.");
+      } else {
+        alert("Failed to save product. Please try again.");
+      }
     } finally {
       setLoading(false);
       setUploading(false);

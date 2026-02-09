@@ -14,6 +14,7 @@ export interface Product {
 export interface ProductInsert {
   title: string;
   subcategory_id: string;
+  category_id?: string; // Optional in TypeScript, but required by DB - derived from subcategory
   price: number;
   description: string;
   preview_image: string;
@@ -22,6 +23,7 @@ export interface ProductInsert {
 export interface ProductUpdate {
   title?: string;
   subcategory_id?: string;
+  category_id?: string; // Optional in TypeScript, but required by DB - derived from subcategory
   price?: number;
   description?: string;
   preview_image?: string;
