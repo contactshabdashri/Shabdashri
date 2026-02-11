@@ -37,7 +37,7 @@ export function Header() {
           <Link to="/" className="flex items-center gap-2 shrink-0">
             <ShoppingBag className="h-8 w-8 text-primary" />
             <span className="text-xl md:text-2xl font-heading font-bold text-foreground">
-              PSD<span className="text-primary">Store</span>
+              Graphic<span className="text-primary">Vishwa</span>
             </span>
           </Link>
 

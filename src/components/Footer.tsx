@@ -12,7 +12,7 @@ export function Footer() {
             <Link to="/" className="flex items-center gap-2 mb-4">
               <ShoppingBag className="h-8 w-8 text-primary" />
               <span className="text-xl font-heading font-bold text-foreground">
-                PSD<span className="text-primary">Store</span>
+                Graphic<span className="text-primary">Vishwa</span>
               </span>
             </Link>
             <p className="text-muted-foreground text-sm mb-4">
@@ -101,7 +101,7 @@ export function Footer() {
       <div className="border-t border-border">
         <div className="container py-4">
           <p className="text-center text-sm text-muted-foreground">
-            © {new Date().getFullYear()} PSD Store. All rights reserved. | All designs at ₹50 only
+            © {new Date().getFullYear()} Graphic Vishwa. All rights reserved. | All designs at ₹50 only
           </p>
         </div>
       </div>
