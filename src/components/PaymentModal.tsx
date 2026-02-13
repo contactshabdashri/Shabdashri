@@ -15,6 +15,7 @@ import {
   formatTransactionNote,
   generateGPayDeeplink,
   generateGPayIntentUrl,
+  generateGPayIOSDeeplink,
   generatePhonePeDeeplink,
   generatePhonePeIntentUrl,
   generateUPIDeeplink,
@@ -85,6 +86,10 @@ export function PaymentModal({ product, isOpen, onClose }: PaymentModalProps) {
     if (!product) return "";
     return generateGPayDeeplink(amount, transactionNote);
   }, [product, amount, transactionNote]);
+  const gpayIOSDeeplink = useMemo(() => {
+    if (!product) return "";
+    return generateGPayIOSDeeplink(amount, transactionNote);
+  }, [product, amount, transactionNote]);
   const gpayIntentUrl = useMemo(() => {
     if (!product) return "";
     return generateGPayIntentUrl(amount, transactionNote);
@@ -101,6 +106,7 @@ export function PaymentModal({ product, isOpen, onClose }: PaymentModalProps) {
   }, [product, amount, transactionNote]);
 
   if (!isOpen || !product) return null;
+  const { isIOS, isInAppBrowser } = getPlatform();
 
   const utrValid = isValidUTR(utr);
   const canSubmit = utrValid && confirmChecked && hasInitiatedPayment;
@@ -115,14 +121,25 @@ export function PaymentModal({ product, isOpen, onClose }: PaymentModalProps) {
     const ua = navigator.userAgent.toLowerCase();
     const isAndroid = ua.includes("android");
     const isIOS = /iphone|ipad|ipod/.test(ua) || (ua.includes("mac") && "ontouchend" in document);
-    return { isAndroid, isIOS };
+    const isInAppBrowser =
+      ua.includes("wv") ||
+      ua.includes("whatsapp") ||
+      ua.includes("instagram") ||
+      ua.includes("fbav") ||
+      ua.includes("fb_iab") ||
+      ua.includes("messenger");
+    return { isAndroid, isIOS, isInAppBrowser };
   };
 
   const openDeeplink = (link: string) => {
     setAppHint("");
+    const { isIOS, isInAppBrowser } = getPlatform();
+    if (isIOS && isInAppBrowser) {
+      setAppHint("Open this page in Safari, then tap UPI App/GPay/PhonePe. In-app browsers may open WhatsApp instead.");
+      return;
+    }
     setHasInitiatedPayment(true);
     window.location.assign(link);
-    const { isIOS } = getPlatform();
     if (isIOS) {
       window.setTimeout(() => {
         setAppHint("If app did not open on iPhone Safari/Chrome, use Scan QR Code option.");
@@ -132,9 +149,12 @@ export function PaymentModal({ product, isOpen, onClose }: PaymentModalProps) {
 
   const openPhonePe = () => {
     setAppHint("");
+    const { isAndroid, isIOS, isInAppBrowser } = getPlatform();
+    if (isIOS && isInAppBrowser) {
+      setAppHint("Open this page in Safari first. WhatsApp/Instagram browser cannot reliably open PhonePe.");
+      return;
+    }
     setHasInitiatedPayment(true);
-
-    const { isAndroid, isIOS } = getPlatform();
 
     if (isAndroid) {
       window.location.assign(phonePeIntentUrl);
@@ -147,8 +167,7 @@ export function PaymentModal({ product, isOpen, onClose }: PaymentModalProps) {
     if (isIOS) {
       window.location.assign(phonePeDeeplink);
       window.setTimeout(() => {
-        window.location.assign(upiDeeplink);
-        setAppHint("If PhonePe did not open on iPhone, choose PhonePe from UPI options.");
+        setAppHint("If PhonePe is not installed, install PhonePe or use the QR scan option.");
       }, 900);
       return;
     }
@@ -161,9 +180,12 @@ export function PaymentModal({ product, isOpen, onClose }: PaymentModalProps) {
 
   const openGPay = () => {
     setAppHint("");
+    const { isAndroid, isIOS, isInAppBrowser } = getPlatform();
+    if (isIOS && isInAppBrowser) {
+      setAppHint("Open this page in Safari first. WhatsApp/Instagram browser cannot reliably open GPay.");
+      return;
+    }
     setHasInitiatedPayment(true);
-
-    const { isAndroid, isIOS } = getPlatform();
 
     if (isAndroid) {
       window.location.assign(gpayIntentUrl);
@@ -174,10 +196,9 @@ export function PaymentModal({ product, isOpen, onClose }: PaymentModalProps) {
     }
 
     if (isIOS) {
-      window.location.assign(gpayDeeplink);
+      window.location.assign(gpayIOSDeeplink);
       window.setTimeout(() => {
-        window.location.assign(upiDeeplink);
-        setAppHint("If GPay did not open on iPhone, choose GPay from UPI options.");
+        setAppHint("If GPay is not installed, install GPay or use the QR scan option.");
       }, 900);
       return;
     }
@@ -227,6 +248,14 @@ export function PaymentModal({ product, isOpen, onClose }: PaymentModalProps) {
         </div>
 
         <div className="p-4 sm:p-6 space-y-5">
+          {isIOS && isInAppBrowser && (
+            <div className="bg-amber-50 border border-amber-300 rounded-xl p-3">
+              <p className="text-xs text-amber-900">
+                You are in an in-app browser. Please open this page in Safari to complete payment app redirects.
+              </p>
+            </div>
+          )}
+
           <div className="grid grid-cols-3 gap-2 text-[11px] sm:text-xs">
             <div className={`rounded-md px-2 py-1 text-center border ${hasInitiatedPayment ? "bg-primary/10 border-primary/20 text-foreground" : "bg-muted border-border text-muted-foreground"}`}>
               1. Pay

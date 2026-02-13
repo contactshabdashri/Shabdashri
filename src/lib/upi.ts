@@ -58,7 +58,19 @@ export function generateGPayDeeplink(
   amount: number,
   transactionNote: string
 ): string {
-  return generateUPIPaymentString(amount, transactionNote);
+  const params = buildUpiParams(amount, transactionNote);
+  return `tez://upi/pay?${params.toString()}`;
+}
+
+/**
+ * Generate iOS deep link URL for GPay.
+ */
+export function generateGPayIOSDeeplink(
+  amount: number,
+  transactionNote: string
+): string {
+  const params = buildUpiParams(amount, transactionNote);
+  return `gpay://upi/pay?${params.toString()}`;
 }
 
 /**
@@ -70,7 +82,8 @@ export function generatePhonePeDeeplink(
   amount: number,
   transactionNote: string
 ): string {
-  return generateUPIPaymentString(amount, transactionNote);
+  const params = buildUpiParams(amount, transactionNote);
+  return `phonepe://pay?${params.toString()}`;
 }
 
 /**
