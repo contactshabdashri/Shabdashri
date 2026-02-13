@@ -1,14 +1,16 @@
 import { useState, useEffect, useMemo } from "react";
 import { X, AlertTriangle, CheckCircle2, MessageCircle, Clock, Smartphone } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import type { Product } from "@/data/products";
-import upiQrCode from "@/assets/upi_v.jpeg";
 import {
+  generateUPIPaymentString,
   generateUPIDeeplink,
   generateGPayDeeplink,
   generatePhonePeDeeplink,
   formatTransactionNote,
+  getUPIId,
 } from "@/lib/upi";
 
 interface PaymentModalProps {
@@ -68,6 +70,12 @@ export function PaymentModal({ product, isOpen, onClose }: PaymentModalProps) {
     if (!product) return "";
     const transactionNote = formatTransactionNote(product.title);
     return generateUPIDeeplink(product.price, transactionNote);
+  }, [product?.price, product?.title]);
+
+  const upiPaymentString = useMemo(() => {
+    if (!product) return "";
+    const transactionNote = formatTransactionNote(product.title);
+    return generateUPIPaymentString(product.price, transactionNote);
   }, [product?.price, product?.title]);
 
   const gpayDeeplink = useMemo(() => {
@@ -180,14 +188,22 @@ export function PaymentModal({ product, isOpen, onClose }: PaymentModalProps) {
               Scan QR Code to Pay
             </h3>
             <div className="bg-card p-4 rounded-xl inline-block border-2 border-primary/20">
-              <img
-                src={upiQrCode}
-                alt="UPI QR Code"
-                className="w-48 h-48 mx-auto object-contain"
+              <QRCodeSVG
+                value={upiPaymentString}
+                size={192}
+                level="M"
+                includeMargin
+                bgColor="#ffffff"
+                fgColor="#111111"
+                title={`UPI payment QR for ${product.title}`}
+                className="w-48 h-48 mx-auto"
               />
             </div>
             <p className="mt-3 text-lg font-bold text-primary">
               Pay ₹{product.price} Only via UPI
+            </p>
+            <p className="text-sm text-muted-foreground mt-1">
+              UPI ID: <span className="font-medium text-foreground">{getUPIId()}</span>
             </p>
             
             {/* Payment App Buttons */}

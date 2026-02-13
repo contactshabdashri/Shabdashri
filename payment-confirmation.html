@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Shabdashri Payment Confirmation</title>
+    <style>
+      :root {
+        --primary: #111827;
+        --accent: #f97316;
+        --success: #22c55e;
+        --bg: #f9fafb;
+        --muted: #6b7280;
+        --error: #dc2626;
+        --card: #ffffff;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Segoe UI", Roboto, Arial, sans-serif;
+        background: var(--bg);
+        color: var(--primary);
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 16px;
+      }
+
+      .payment-card {
+        width: 100%;
+        max-width: 460px;
+        background: var(--card);
+        border-radius: 20px;
+        box-shadow: 0 16px 40px rgba(17, 24, 39, 0.12);
+        padding: 24px 18px;
+        animation: fadeUp 0.45s ease both;
+      }
+
+      .brand {
+        font-weight: 700;
+        font-size: 0.95rem;
+        letter-spacing: 0.02em;
+        color: var(--accent);
+        margin-bottom: 10px;
+      }
+
+      h1 {
+        font-size: 1.35rem;
+        line-height: 1.3;
+        margin: 0;
+      }
+
+      .subtext {
+        margin: 8px 0 20px;
+        color: var(--muted);
+        font-size: 0.94rem;
+      }
+
+      .qr-wrap {
+        text-align: center;
+        background: #fff7ed;
+        border: 1px solid #fed7aa;
+        border-radius: 14px;
+        padding: 16px;
+      }
+
+      .qr-box {
+        width: min(220px, 72vw);
+        aspect-ratio: 1 / 1;
+        margin: 0 auto 12px;
+        border-radius: 12px;
+        border: 1px solid #e5e7eb;
+        background: repeating-linear-gradient(
+            45deg,
+            #f3f4f6,
+            #f3f4f6 12px,
+            #ffffff 12px,
+            #ffffff 24px
+          ),
+          #fff;
+        display: grid;
+        place-items: center;
+        font-size: 0.9rem;
+        color: #4b5563;
+        font-weight: 600;
+      }
+
+      .meta {
+        margin: 4px 0;
+        font-size: 0.92rem;
+      }
+
+      .amount {
+        font-weight: 800;
+        font-size: 1.6rem;
+        margin-top: 6px;
+      }
+
+      .form-block {
+        margin-top: 18px;
+      }
+
+      label {
+        display: block;
+        font-size: 0.9rem;
+        margin-bottom: 7px;
+        font-weight: 600;
+      }
+
+      input {
+        width: 100%;
+        border: 1px solid #d1d5db;
+        border-radius: 10px;
+        padding: 11px 12px;
+        font-size: 0.98rem;
+        transition: border-color 0.2s ease, box-shadow 0.2s ease;
+      }
+
+      input:focus {
+        outline: none;
+        border-color: var(--accent);
+        box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.15);
+      }
+
+      .error {
+        min-height: 20px;
+        margin-top: 6px;
+        color: var(--error);
+        font-size: 0.84rem;
+      }
+
+      .btn {
+        width: 100%;
+        border: none;
+        background: var(--accent);
+        color: #fff;
+        border-radius: 10px;
+        padding: 12px 16px;
+        font-weight: 700;
+        font-size: 0.98rem;
+        cursor: pointer;
+        margin-top: 8px;
+        transition: transform 0.15s ease, opacity 0.2s ease, filter 0.2s ease;
+      }
+
+      .btn:hover:enabled {
+        filter: brightness(0.95);
+      }
+
+      .btn:active:enabled {
+        transform: scale(0.98);
+      }
+
+      .btn:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+
+      .hidden {
+        display: none;
+      }
+
+      .success {
+        text-align: center;
+        animation: fadeIn 0.5s ease both;
+      }
+
+      .tick-svg {
+        width: 92px;
+        height: 92px;
+        margin: 0 auto 8px;
+        transform-origin: center;
+        animation: tickPop 0.5s ease;
+      }
+
+      .tick-circle {
+        fill: #ecfdf3;
+        stroke: var(--success);
+        stroke-width: 3;
+      }
+
+      .tick-path {
+        fill: none;
+        stroke: var(--success);
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        stroke-width: 5;
+        stroke-dasharray: 48;
+        stroke-dashoffset: 48;
+        animation: drawTick 0.65s ease forwards 0.2s;
+      }
+
+      .success h2 {
+        margin: 8px 0 6px;
+        font-size: 1.2rem;
+      }
+
+      .success p {
+        margin: 0 0 14px;
+        color: var(--muted);
+      }
+
+      .receipt {
+        border: 1px solid #d1fae5;
+        background: #f0fdf4;
+        border-radius: 12px;
+        text-align: left;
+        padding: 14px;
+      }
+
+      .receipt-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 5px 0;
+        font-size: 0.9rem;
+      }
+
+      .receipt-row strong {
+        color: var(--primary);
+      }
+
+      .redirect-note {
+        margin-top: 10px;
+        font-size: 0.8rem;
+        color: var(--muted);
+      }
+
+      @keyframes fadeUp {
+        from {
+          opacity: 0;
+          transform: translateY(10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: scale(0.98);
+        }
+        to {
+          opacity: 1;
+          transform: scale(1);
+        }
+      }
+
+      @keyframes drawTick {
+        to {
+          stroke-dashoffset: 0;
+        }
+      }
+
+      @keyframes tickPop {
+        0% {
+          transform: scale(0.82);
+        }
+        100% {
+          transform: scale(1);
+        }
+      }
+
+      @media (min-width: 768px) {
+        .payment-card {
+          padding: 28px 24px;
+          max-width: 500px;
+        }
+
+        h1 {
+          font-size: 1.5rem;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="payment-card" aria-live="polite">
+      <section id="payment-section">
+        <div class="brand">Shabdashri</div>
+        <h1>Complete Your Payment</h1>
+        <p class="subtext">
+          Scan the QR and enter your UTR number after payment
+        </p>
+
+        <div class="qr-wrap">
+          <div class="qr-box" aria-label="UPI QR Placeholder">QR PLACEHOLDER</div>
+          <p class="meta"><strong>UPI ID:</strong> <span id="upi-id"></span></p>
+          <p class="amount">₹<span id="amount-text"></span></p>
+        </div>
+
+        <form id="utr-form" class="form-block" novalidate>
+          <label for="utr">Enter UTR Number</label>
+          <input
+            id="utr"
+            name="utr"
+            type="text"
+            inputmode="numeric"
+            autocomplete="off"
+            placeholder="Enter 12-digit UTR number"
+            maxlength="18"
+            aria-describedby="utr-error"
+          />
+          <div id="utr-error" class="error" role="alert"></div>
+          <button id="verify-btn" class="btn" type="submit" disabled>
+            Verify Payment
+          </button>
+        </form>
+      </section>
+
+      <section id="success-section" class="success hidden">
+        <svg class="tick-svg" viewBox="0 0 100 100" aria-hidden="true">
+          <circle class="tick-circle" cx="50" cy="50" r="44"></circle>
+          <path class="tick-path" d="M30 52 L45 66 L72 38"></path>
+        </svg>
+        <h2>Payment Verified Successfully!</h2>
+        <p>Your payment details are captured and being shared.</p>
+
+        <div class="receipt">
+          <div class="receipt-row"><span>Order ID</span><strong id="r-order"></strong></div>
+          <div class="receipt-row"><span>Amount</span><strong>₹<span id="r-amount"></span></strong></div>
+          <div class="receipt-row"><span>UTR</span><strong id="r-utr"></strong></div>
+          <div class="receipt-row"><span>Date</span><strong id="r-date"></strong></div>
+        </div>
+
+        <p class="redirect-note">Redirecting to WhatsApp in 3 seconds...</p>
+      </section>
+    </main>
+
+    <script>
+      // Dynamic order/payment values
+      const PAYMENT_AMOUNT = 499;
+      const UPI_ID = "vaishnavipawar5050@okicici";
+      const WA_NUMBER = "919999999999";
+
+      const paymentSection = document.getElementById("payment-section");
+      const successSection = document.getElementById("success-section");
+      const amountText = document.getElementById("amount-text");
+      const upiIdText = document.getElementById("upi-id");
+      const utrInput = document.getElementById("utr");
+      const utrError = document.getElementById("utr-error");
+      const verifyBtn = document.getElementById("verify-btn");
+      const utrForm = document.getElementById("utr-form");
+
+      const receiptOrder = document.getElementById("r-order");
+      const receiptAmount = document.getElementById("r-amount");
+      const receiptUtr = document.getElementById("r-utr");
+      const receiptDate = document.getElementById("r-date");
+
+      amountText.textContent = PAYMENT_AMOUNT;
+      upiIdText.textContent = UPI_ID;
+
+      function validateUTR(value) {
+        const trimmed = value.trim();
+        if (!trimmed) return "UTR number is required.";
+        if (!/^\d+$/.test(trimmed)) return "UTR must contain only numbers.";
+        if (trimmed.length < 10 || trimmed.length > 18) {
+          return "UTR must be between 10 and 18 digits.";
+        }
+        return "";
+      }
+
+      function updateValidationState() {
+        const error = validateUTR(utrInput.value);
+        utrError.textContent = error;
+        verifyBtn.disabled = Boolean(error);
+      }
+
+      utrInput.addEventListener("input", () => {
+        utrInput.value = utrInput.value.replace(/[^\d]/g, "");
+        updateValidationState();
+      });
+
+      function generateOrderId() {
+        const rand = Math.floor(1000 + Math.random() * 9000);
+        return "SHB" + Date.now().toString().slice(-6) + rand;
+      }
+
+      function formatDate() {
+        return new Date().toLocaleString("en-IN", {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+      }
+
+      utrForm.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const error = validateUTR(utrInput.value);
+        if (error) {
+          utrError.textContent = error;
+          return;
+        }
+
+        const utr = utrInput.value.trim();
+        const orderId = generateOrderId();
+
+        paymentSection.classList.add("hidden");
+        successSection.classList.remove("hidden");
+
+        receiptOrder.textContent = orderId;
+        receiptAmount.textContent = PAYMENT_AMOUNT;
+        receiptUtr.textContent = utr;
+        receiptDate.textContent = formatDate();
+
+        const message =
+          "Hello Shabdashri,\n\n" +
+          "I have completed payment.\n\n" +
+          "Order ID: " + orderId + "\n" +
+          "Amount: ₹" + PAYMENT_AMOUNT + "\n" +
+          "UTR: " + utr + "\n\n" +
+          "Please share my design files.";
+
+        const encoded = encodeURIComponent(message);
+        const waUrl = "https://wa.me/" + WA_NUMBER + "?text=" + encoded;
+
+        setTimeout(() => {
+          window.location.href = waUrl;
+        }, 3000);
+      });
+    </script>
+  </body>
+</html>
