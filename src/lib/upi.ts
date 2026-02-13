@@ -3,7 +3,7 @@
  * Generates UPI payment strings and deep links for dynamic QR codes
  */
 
-const UPI_ID = import.meta.env.VITE_UPI_ID || "vaishnavipawar5050@okicici";
+const UPI_ID = import.meta.env.VITE_UPI_ID || "vishalshinde8747@okhdfcbank";
 const MERCHANT_NAME = import.meta.env.VITE_MERCHANT_NAME || "Shabdashri";
 
 /**
@@ -23,7 +23,7 @@ export function generateUPIPaymentString(
 
   // Encode parameters
   const params = new URLSearchParams({
-    pa: UPI_ID || "vaishnavipawar5050@okicici",
+    pa: UPI_ID || "vishalshinde8747@okhdfcbank",
     pn: MERCHANT_NAME,
     am: formattedAmount,
     cu: "INR",
@@ -131,7 +131,7 @@ export function formatTransactionNote(productTitle: string): string {
  * Get UPI ID (for display purposes)
  */
 export function getUPIId(): string {
-  return UPI_ID || "vaishnavipawar5050@okicici";
+  return UPI_ID || "vishalshinde8747@okhdfcbank";
 }
 
 /**
