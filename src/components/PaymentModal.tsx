@@ -14,6 +14,7 @@ import type { Product } from "@/data/products";
 import {
   formatTransactionNote,
   generateGPayDeeplink,
+  generateGPayIntentUrl,
   generatePhonePeDeeplink,
   generatePhonePeIntentUrl,
   generateUPIDeeplink,
@@ -46,6 +47,7 @@ export function PaymentModal({ product, isOpen, onClose }: PaymentModalProps) {
   const [orderId, setOrderId] = useState("");
   const [copied, setCopied] = useState(false);
   const [appHint, setAppHint] = useState("");
+  const [hasInitiatedPayment, setHasInitiatedPayment] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -55,6 +57,7 @@ export function PaymentModal({ product, isOpen, onClose }: PaymentModalProps) {
     setOrderId(createOrderId());
     setCopied(false);
     setAppHint("");
+    setHasInitiatedPayment(false);
   }, [isOpen]);
 
   const amount = useMemo(() => {
@@ -82,6 +85,10 @@ export function PaymentModal({ product, isOpen, onClose }: PaymentModalProps) {
     if (!product) return "";
     return generateGPayDeeplink(amount, transactionNote);
   }, [product, amount, transactionNote]);
+  const gpayIntentUrl = useMemo(() => {
+    if (!product) return "";
+    return generateGPayIntentUrl(amount, transactionNote);
+  }, [product, amount, transactionNote]);
 
   const phonePeDeeplink = useMemo(() => {
     if (!product) return "";
@@ -96,18 +103,23 @@ export function PaymentModal({ product, isOpen, onClose }: PaymentModalProps) {
   if (!isOpen || !product) return null;
 
   const utrValid = isValidUTR(utr);
-  const canSubmit = utrValid && confirmChecked;
+  const canSubmit = utrValid && confirmChecked && hasInitiatedPayment;
   const utrError = showValidation && !utrValid
     ? "Enter a valid numeric UTR (10 to 18 digits)."
+    : "";
+  const processError = showValidation && !hasInitiatedPayment
+    ? "Open a payment app first to start payment."
     : "";
 
   const openDeeplink = (link: string) => {
     setAppHint("");
+    setHasInitiatedPayment(true);
     window.location.href = link;
   };
 
   const openPhonePe = () => {
     setAppHint("");
+    setHasInitiatedPayment(true);
 
     const ua = navigator.userAgent.toLowerCase();
     const isAndroid = ua.includes("android");
@@ -125,6 +137,29 @@ export function PaymentModal({ product, isOpen, onClose }: PaymentModalProps) {
     window.setTimeout(() => {
       window.location.href = upiDeeplink;
       setAppHint("If PhonePe does not open on this device/browser, use UPI App or scan QR.");
+    }, 900);
+  };
+
+  const openGPay = () => {
+    setAppHint("");
+    setHasInitiatedPayment(true);
+
+    const ua = navigator.userAgent.toLowerCase();
+    const isAndroid = ua.includes("android");
+
+    if (isAndroid) {
+      window.location.href = gpayIntentUrl;
+      window.setTimeout(() => {
+        window.location.href = upiDeeplink;
+        setAppHint("GPay did not open. Choose GPay from the UPI app picker.");
+      }, 900);
+      return;
+    }
+
+    window.location.href = gpayDeeplink;
+    window.setTimeout(() => {
+      window.location.href = upiDeeplink;
+      setAppHint("If GPay does not open on this device/browser, use UPI App or scan QR.");
     }, 900);
   };
 
@@ -158,7 +193,7 @@ export function PaymentModal({ product, isOpen, onClose }: PaymentModalProps) {
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
       <div className="absolute inset-0 bg-foreground/60 backdrop-blur-sm" onClick={handleClose} />
 
-      <div className="relative bg-card rounded-2xl shadow-modal w-full max-w-md max-h-[92vh] overflow-y-auto animate-scale-in">
+      <div className="relative bg-card rounded-2xl shadow-modal w-full max-w-md max-h-[92vh] overflow-y-auto animate-scale-in pb-[max(1rem,env(safe-area-inset-bottom))]">
         <div className="sticky top-0 z-10 bg-card border-b border-border p-4 flex items-center justify-between rounded-t-2xl">
           <h2 className="font-heading font-bold text-lg text-foreground">Secure Payment Confirmation</h2>
           <Button variant="ghost" size="icon" onClick={handleClose}>
@@ -167,6 +202,18 @@ export function PaymentModal({ product, isOpen, onClose }: PaymentModalProps) {
         </div>
 
         <div className="p-4 sm:p-6 space-y-5">
+          <div className="grid grid-cols-3 gap-2 text-[11px] sm:text-xs">
+            <div className={`rounded-md px-2 py-1 text-center border ${hasInitiatedPayment ? "bg-primary/10 border-primary/20 text-foreground" : "bg-muted border-border text-muted-foreground"}`}>
+              1. Pay
+            </div>
+            <div className={`rounded-md px-2 py-1 text-center border ${utrValid ? "bg-primary/10 border-primary/20 text-foreground" : "bg-muted border-border text-muted-foreground"}`}>
+              2. UTR
+            </div>
+            <div className={`rounded-md px-2 py-1 text-center border ${confirmChecked ? "bg-primary/10 border-primary/20 text-foreground" : "bg-muted border-border text-muted-foreground"}`}>
+              3. Confirm
+            </div>
+          </div>
+
           <div className="flex gap-3 p-3 bg-secondary rounded-xl">
             <img
               src={product.previewImage}
@@ -185,13 +232,13 @@ export function PaymentModal({ product, isOpen, onClose }: PaymentModalProps) {
             <div className="inline-block bg-white p-3 rounded-xl border border-border">
               <QRCodeSVG
                 value={upiPaymentString}
-                size={192}
+                size={176}
                 includeMargin
                 level="M"
                 bgColor="#ffffff"
                 fgColor="#111111"
                 title={`UPI payment for ${product.title}`}
-                className="w-44 h-44 sm:w-48 sm:h-48"
+                className="w-40 h-40 sm:w-44 sm:h-44"
               />
             </div>
             <p className="mt-3 text-sm text-muted-foreground">
@@ -212,7 +259,7 @@ export function PaymentModal({ product, isOpen, onClose }: PaymentModalProps) {
               <Smartphone className="h-4 w-4" />
               UPI App
             </Button>
-            <Button variant="outline" className="gap-2" onClick={() => openDeeplink(gpayDeeplink)}>
+            <Button variant="outline" className="gap-2" onClick={openGPay}>
               <Smartphone className="h-4 w-4" />
               GPay
             </Button>
@@ -247,12 +294,14 @@ export function PaymentModal({ product, isOpen, onClose }: PaymentModalProps) {
             <Checkbox
               checked={confirmChecked}
               onCheckedChange={(checked) => setConfirmChecked(Boolean(checked))}
+              disabled={!hasInitiatedPayment}
               className="mt-0.5"
             />
             <span className="text-sm text-foreground">
               I confirm I paid the exact amount and entered the correct UTR for verification.
             </span>
           </label>
+          {processError && <p className="text-xs text-destructive -mt-3">{processError}</p>}
 
           <div className="bg-primary/10 border border-primary/20 rounded-xl p-3">
             <div className="flex items-start gap-2">
@@ -272,7 +321,7 @@ export function PaymentModal({ product, isOpen, onClose }: PaymentModalProps) {
             </div>
           </div>
 
-          <Button className="w-full gap-2 h-11" onClick={handleWhatsApp} disabled={!canSubmit}>
+          <Button className="w-full gap-2 h-11 text-sm sm:text-base" onClick={handleWhatsApp} disabled={!canSubmit}>
             <MessageCircle className="h-5 w-5" />
             Submit UTR on WhatsApp
           </Button>

@@ -6,6 +6,21 @@
 const UPI_ID = import.meta.env.VITE_UPI_ID || "vishalshinde8747@okhdfcbank";
 const MERCHANT_NAME = import.meta.env.VITE_MERCHANT_NAME || "Shabdashri";
 
+function getFormattedAmount(amount: number): string {
+  const safeAmount = Number.isFinite(amount) && amount > 0 ? amount : 1;
+  return safeAmount.toFixed(2);
+}
+
+function buildUpiParams(amount: number, transactionNote: string): URLSearchParams {
+  return new URLSearchParams({
+    pa: UPI_ID || "vishalshinde8747@okhdfcbank",
+    pn: MERCHANT_NAME,
+    am: getFormattedAmount(amount),
+    cu: "INR",
+    tn: transactionNote,
+  });
+}
+
 /**
  * Generate UPI payment string
  * Format: upi://pay?pa=<UPI_ID>&pn=<MERCHANT_NAME>&am=<AMOUNT>&cu=INR&tn=<TRANSACTION_NOTE>
@@ -18,17 +33,7 @@ export function generateUPIPaymentString(
     console.warn("VITE_UPI_ID not configured. Using placeholder.");
   }
 
-  // Format amount to 2 decimal places
-  const formattedAmount = amount.toFixed(2);
-
-  // Encode parameters
-  const params = new URLSearchParams({
-    pa: UPI_ID || "vishalshinde8747@okhdfcbank",
-    pn: MERCHANT_NAME,
-    am: formattedAmount,
-    cu: "INR",
-    tn: transactionNote,
-  });
+  const params = buildUpiParams(amount, transactionNote);
 
   return `upi://pay?${params.toString()}`;
 }
@@ -53,23 +58,7 @@ export function generateGPayDeeplink(
   amount: number,
   transactionNote: string
 ): string {
-  if (!UPI_ID) {
-    console.warn("VITE_UPI_ID not configured. Using placeholder.");
-  }
-
-  // Format amount to 2 decimal places
-  const formattedAmount = amount.toFixed(2);
-
-  // Encode parameters
-  const params = new URLSearchParams({
-    pa: UPI_ID,
-    pn: MERCHANT_NAME,
-    am: formattedAmount,
-    cu: "INR",
-    tn: transactionNote,
-  });
-
-  return `tez://upi/pay?${params.toString()}`;
+  return generateUPIPaymentString(amount, transactionNote);
 }
 
 /**
@@ -81,23 +70,7 @@ export function generatePhonePeDeeplink(
   amount: number,
   transactionNote: string
 ): string {
-  if (!UPI_ID) {
-    console.warn("VITE_UPI_ID not configured. Using placeholder.");
-  }
-
-  // Format amount to 2 decimal places
-  const formattedAmount = amount.toFixed(2);
-
-  // Encode parameters
-  const params = new URLSearchParams({
-    pa: UPI_ID,
-    pn: MERCHANT_NAME,
-    am: formattedAmount,
-    cu: "INR",
-    tn: transactionNote,
-  });
-
-  return `phonepe://pay?${params.toString()}`;
+  return generateUPIPaymentString(amount, transactionNote);
 }
 
 /**
@@ -108,16 +81,20 @@ export function generatePhonePeIntentUrl(
   amount: number,
   transactionNote: string
 ): string {
-  const formattedAmount = amount.toFixed(2);
-  const params = new URLSearchParams({
-    pa: UPI_ID,
-    pn: MERCHANT_NAME,
-    am: formattedAmount,
-    cu: "INR",
-    tn: transactionNote,
-  });
+  const params = buildUpiParams(amount, transactionNote);
 
   return `intent://upi/pay?${params.toString()}#Intent;scheme=upi;package=com.phonepe.app;end`;
+}
+
+/**
+ * Generate Android intent URL for GPay.
+ */
+export function generateGPayIntentUrl(
+  amount: number,
+  transactionNote: string
+): string {
+  const params = buildUpiParams(amount, transactionNote);
+  return `intent://upi/pay?${params.toString()}#Intent;scheme=upi;package=com.google.android.apps.nbu.paisa.user;end`;
 }
 
 /**
