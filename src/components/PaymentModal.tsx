@@ -33,7 +33,7 @@ type UiStatus =
   | "failed";
 
 const WHATSAPP_NUMBER = "918767980311";
-const VERIFICATION_POLL_ATTEMPTS = 30;
+const VERIFICATION_POLL_ATTEMPTS = 60;
 const VERIFICATION_POLL_MS = 2000;
 
 function wait(ms: number): Promise<void> {
@@ -51,6 +51,7 @@ export function PaymentModal({ product, isOpen, onClose }: PaymentModalProps) {
   const [statusMessage, setStatusMessage] = useState("");
   const [gatewayOrder, setGatewayOrder] = useState<CreateGatewayOrderResponse | null>(null);
   const [redirectCountdown, setRedirectCountdown] = useState<number | null>(null);
+  const [failureMode, setFailureMode] = useState<"none" | "timeout" | "other">("none");
 
   const isActiveRef = useRef(false);
   const pollAbortRef = useRef(false);
@@ -65,6 +66,7 @@ export function PaymentModal({ product, isOpen, onClose }: PaymentModalProps) {
       setStatusMessage("");
       setGatewayOrder(null);
       setRedirectCountdown(null);
+      setFailureMode("none");
       return;
     }
 
@@ -74,6 +76,7 @@ export function PaymentModal({ product, isOpen, onClose }: PaymentModalProps) {
     setStatusMessage("");
     setGatewayOrder(null);
     setRedirectCountdown(null);
+    setFailureMode("none");
 
     return () => {
       isActiveRef.current = false;
@@ -135,6 +138,7 @@ export function PaymentModal({ product, isOpen, onClose }: PaymentModalProps) {
         setUiStatus("success");
         setStatusMessage("Payment successful.");
         setRedirectCountdown(3);
+        setFailureMode("none");
         return;
       }
 
@@ -145,6 +149,7 @@ export function PaymentModal({ product, isOpen, onClose }: PaymentModalProps) {
           statusResponse.failureReason || "Payment unsuccessful, please try again."
         );
         setRedirectCountdown(null);
+        setFailureMode("other");
         return;
       }
 
@@ -154,9 +159,10 @@ export function PaymentModal({ product, isOpen, onClose }: PaymentModalProps) {
     if (!isActiveRef.current) return;
     setUiStatus("failed");
     setStatusMessage(
-      "Payment verification timed out. If amount was debited, contact support with your order reference."
+      "Payment verification timed out. If amount was debited, do not pay again. Use Check Status Again."
     );
     setRedirectCountdown(null);
+    setFailureMode("timeout");
   }, []);
 
   const startAutoVerifiedPayment = async () => {
@@ -166,6 +172,7 @@ export function PaymentModal({ product, isOpen, onClose }: PaymentModalProps) {
     setUiStatus("creating_order");
     setStatusMessage("");
     setRedirectCountdown(null);
+    setFailureMode("none");
 
     try {
       const order = await createGatewayOrder(product.id);
@@ -216,6 +223,7 @@ export function PaymentModal({ product, isOpen, onClose }: PaymentModalProps) {
             setUiStatus("failed");
             setStatusMessage("Payment popup was closed. Please try again.");
             setRedirectCountdown(null);
+            setFailureMode("other");
           },
         },
         handler: async (response: any) => {
@@ -237,6 +245,7 @@ export function PaymentModal({ product, isOpen, onClose }: PaymentModalProps) {
             setStatusMessage(
               getErrorMessage(error, "Payment verification failed. Please retry.")
             );
+            setFailureMode("other");
             return;
           }
 
@@ -248,6 +257,7 @@ export function PaymentModal({ product, isOpen, onClose }: PaymentModalProps) {
             setStatusMessage(
               getErrorMessage(error, "Payment verification failed. Please retry.")
             );
+            setFailureMode("other");
           }
         },
       });
@@ -272,6 +282,7 @@ export function PaymentModal({ product, isOpen, onClose }: PaymentModalProps) {
         setUiStatus("failed");
         setStatusMessage(failureReason);
         setRedirectCountdown(null);
+        setFailureMode("other");
       });
 
       razorpayInstance.open();
@@ -280,6 +291,26 @@ export function PaymentModal({ product, isOpen, onClose }: PaymentModalProps) {
       setUiStatus("failed");
       setStatusMessage(getErrorMessage(error, "Unable to start payment. Please try again."));
       setRedirectCountdown(null);
+      setFailureMode("other");
+    }
+  };
+
+  const recheckExistingPaymentStatus = async () => {
+    if (!gatewayOrder) return;
+    pollAbortRef.current = false;
+    setUiStatus("verifying");
+    setStatusMessage("Re-checking payment status...");
+    setFailureMode("none");
+
+    try {
+      await pollFinalStatus(gatewayOrder.paymentToken);
+    } catch (error) {
+      if (!isActiveRef.current) return;
+      setUiStatus("failed");
+      setStatusMessage(
+        getErrorMessage(error, "Unable to verify payment right now. Please retry in a moment.")
+      );
+      setFailureMode("other");
     }
   };
 
@@ -401,10 +432,16 @@ export function PaymentModal({ product, isOpen, onClose }: PaymentModalProps) {
                 type="button"
                 variant="outline"
                 className="w-full"
-                onClick={startAutoVerifiedPayment}
+                onClick={
+                  failureMode === "timeout" && gatewayOrder
+                    ? recheckExistingPaymentStatus
+                    : startAutoVerifiedPayment
+                }
                 disabled={isBusy}
               >
-                Try Payment Again
+                {failureMode === "timeout" && gatewayOrder
+                  ? "Check Status Again"
+                  : "Try Payment Again"}
               </Button>
             </div>
           )}
@@ -419,4 +456,3 @@ export function PaymentModal({ product, isOpen, onClose }: PaymentModalProps) {
     </div>
   );
 }
-
