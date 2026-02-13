@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { supabase } from "../../lib/supabase";
+import { isSupabaseConfigured, supabase } from "../../lib/supabase";
 import { useNavigate } from "react-router-dom";
 
 export default function AdminLogin() {
@@ -20,6 +20,14 @@ export default function AdminLogin() {
     setLoading(true);
     setError(null);
 
+    if (!isSupabaseConfigured) {
+      setError(
+        "Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY, then redeploy/restart."
+      );
+      setLoading(false);
+      return;
+    }
+
     try {
       const { error } = await supabase.auth.signInWithPassword({
         email,
@@ -32,7 +40,13 @@ export default function AdminLogin() {
         navigate("/admin/dashboard");
       }
     } catch (err: any) {
-      setError(err.message || "An error occurred during login");
+      if (err?.message === "Failed to fetch") {
+        setError(
+          "Could not reach Supabase. Check VITE_SUPABASE_URL/VITE_SUPABASE_ANON_KEY and your network/firewall."
+        );
+      } else {
+        setError(err.message || "An error occurred during login");
+      }
     } finally {
       setLoading(false);
     }

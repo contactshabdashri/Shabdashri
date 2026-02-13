@@ -3,25 +3,15 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-console.log('Supabase URL:', supabaseUrl ? 'Set' : 'Missing');
-console.log('Supabase Key:', supabaseAnonKey ? 'Set' : 'Missing');
+export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
 
-let supabase;
-
-try {
-  if (supabaseUrl && supabaseAnonKey) {
-    supabase = createClient(supabaseUrl, supabaseAnonKey);
-    console.log('Supabase client initialized successfully');
-  } else {
-    supabase = createClient('https://placeholder.supabase.co', 'placeholder-key');
-  }
-} catch (error) {
-  supabase = createClient('https://placeholder.supabase.co', 'placeholder-key');
+if (!isSupabaseConfigured) {
+  console.error(
+    'Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your environment.'
+  );
 }
 
-/* 🔥 ADD THIS BLOCK 🔥 */
-if (typeof window !== 'undefined') {
-  (window as any).supabase = supabase;
-}
+const fallbackUrl = supabaseUrl || 'https://invalid-project-ref.supabase.co';
+const fallbackKey = supabaseAnonKey || 'invalid-anon-key';
 
-export { supabase };
+export const supabase = createClient(fallbackUrl, fallbackKey);
