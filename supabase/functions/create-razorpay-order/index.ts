@@ -67,6 +67,11 @@ serve(async (req) => {
     }
 
     const amountPaise = Math.round(amount * 100);
+    if (amountPaise < 1000) {
+      return jsonResponse(400, {
+        error: "Minimum payable amount is Rs 10 for gateway checkout.",
+      });
+    }
     const receipt = `shb_${Date.now()}_${product.id.slice(0, 6)}`;
     const basicAuth = btoa(`${razorpayKeyId}:${razorpayKeySecret}`);
 
@@ -80,7 +85,6 @@ serve(async (req) => {
         amount: amountPaise,
         currency: "INR",
         receipt,
-        payment_capture: 1,
         notes: {
           product_id: product.id,
           product_title: product.title,
@@ -91,6 +95,17 @@ serve(async (req) => {
     if (!razorpayOrderRes.ok) {
       const errorText = await razorpayOrderRes.text();
       console.error("Razorpay order creation failed:", errorText);
+
+      try {
+        const parsed = JSON.parse(errorText) as { error?: { description?: string } };
+        const description = parsed.error?.description?.trim();
+        if (description) {
+          return jsonResponse(502, { error: description });
+        }
+      } catch {
+        // no-op, fallback message below
+      }
+
       return jsonResponse(502, { error: "Unable to create payment order" });
     }
 
@@ -135,4 +150,3 @@ serve(async (req) => {
     return jsonResponse(500, { error: "Internal server error" });
   }
 });
-

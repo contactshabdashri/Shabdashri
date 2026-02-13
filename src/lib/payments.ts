@@ -1,4 +1,9 @@
 import { supabase } from "@/lib/supabase";
+import {
+  FunctionsFetchError,
+  FunctionsHttpError,
+  FunctionsRelayError,
+} from "@supabase/supabase-js";
 
 export type CreateGatewayOrderResponse = {
   paymentOrderId: string;
@@ -29,7 +34,41 @@ export type SubmitGatewayPaymentPayload = {
   failureReason?: string;
 };
 
-function resolveFunctionError(error: unknown, fallback: string): Error {
+function extractMessageFromBody(body: unknown): string | null {
+  if (typeof body === "string" && body.trim()) return body.trim();
+  if (!body || typeof body !== "object") return null;
+
+  const record = body as Record<string, unknown>;
+  const directError = record.error;
+  if (typeof directError === "string" && directError.trim()) return directError.trim();
+
+  const directMessage = record.message;
+  if (typeof directMessage === "string" && directMessage.trim()) return directMessage.trim();
+
+  return null;
+}
+
+async function resolveFunctionError(error: unknown, fallback: string): Promise<Error> {
+  if (error instanceof FunctionsHttpError) {
+    try {
+      const body = await error.context.json();
+      const message = extractMessageFromBody(body);
+      if (message) return new Error(message);
+    } catch {
+      try {
+        const text = await error.context.text();
+        if (text.trim()) return new Error(text.trim());
+      } catch {
+        // ignore and fallback
+      }
+    }
+    return new Error(fallback);
+  }
+
+  if (error instanceof FunctionsRelayError || error instanceof FunctionsFetchError) {
+    return new Error("Unable to reach payment server. Please check your connection and retry.");
+  }
+
   if (error instanceof Error) return error;
   if (typeof error === "string" && error.trim()) return new Error(error);
   return new Error(fallback);
@@ -42,7 +81,7 @@ export async function createGatewayOrder(productId: string): Promise<CreateGatew
   );
 
   if (error || !data) {
-    throw resolveFunctionError(error, "Unable to create payment order.");
+    throw await resolveFunctionError(error, "Unable to create payment order.");
   }
 
   return data;
@@ -57,7 +96,7 @@ export async function submitGatewayPayment(
   );
 
   if (error || !data) {
-    throw resolveFunctionError(error, "Unable to submit payment details.");
+    throw await resolveFunctionError(error, "Unable to submit payment details.");
   }
 
   return data;
@@ -70,7 +109,7 @@ export async function getGatewayPaymentStatus(paymentToken: string): Promise<Pay
   );
 
   if (error || !data) {
-    throw resolveFunctionError(error, "Unable to fetch payment status.");
+    throw await resolveFunctionError(error, "Unable to fetch payment status.");
   }
 
   return data;
@@ -113,4 +152,3 @@ export function loadRazorpayCheckoutScript(): Promise<boolean> {
 
   return razorpayScriptPromise;
 }
-
