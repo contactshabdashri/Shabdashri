@@ -117,7 +117,7 @@ export function PaymentModal({ product, isOpen, onClose }: PaymentModalProps) {
     ? "Open a payment app first to start payment."
     : "";
 
-  const getPlatform = () => {
+  function getPlatform() {
     const ua = navigator.userAgent.toLowerCase();
     const isAndroid = ua.includes("android");
     const isIOS = /iphone|ipad|ipod/.test(ua) || (ua.includes("mac") && "ontouchend" in document);
@@ -129,7 +129,7 @@ export function PaymentModal({ product, isOpen, onClose }: PaymentModalProps) {
       ua.includes("fb_iab") ||
       ua.includes("messenger");
     return { isAndroid, isIOS, isInAppBrowser };
-  };
+  }
 
   const openDeeplink = (link: string) => {
     setAppHint("");
