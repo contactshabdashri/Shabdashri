@@ -1,15 +1,23 @@
-import { useState, useEffect, useMemo } from "react";
-import { X, AlertTriangle, CheckCircle2, MessageCircle, Clock, Smartphone } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Copy,
+  MessageCircle,
+  Smartphone,
+  X,
+} from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import type { Product } from "@/data/products";
 import {
-  generateUPIPaymentString,
-  generateUPIDeeplink,
+  formatTransactionNote,
   generateGPayDeeplink,
   generatePhonePeDeeplink,
-  formatTransactionNote,
+  generatePhonePeIntentUrl,
+  generateUPIDeeplink,
+  generateUPIPaymentString,
   getUPIId,
 } from "@/lib/upi";
 
@@ -19,307 +27,258 @@ interface PaymentModalProps {
   onClose: () => void;
 }
 
-const TIMER_DURATION = 30; // seconds
+const WHATSAPP_NUMBER = "918767980311";
+
+function createOrderId(): string {
+  const now = Date.now().toString().slice(-8);
+  const random = Math.floor(1000 + Math.random() * 9000);
+  return `SHB${now}${random}`;
+}
+
+function isValidUTR(value: string): boolean {
+  return /^\d{10,18}$/.test(value.trim());
+}
 
 export function PaymentModal({ product, isOpen, onClose }: PaymentModalProps) {
-  const [isConfirmed, setIsConfirmed] = useState(false);
-  const [showError, setShowError] = useState(false);
-  const [timeRemaining, setTimeRemaining] = useState(TIMER_DURATION);
-  const [isTimerComplete, setIsTimerComplete] = useState(false);
+  const [utr, setUtr] = useState("");
+  const [confirmChecked, setConfirmChecked] = useState(false);
+  const [showValidation, setShowValidation] = useState(false);
+  const [orderId, setOrderId] = useState("");
+  const [copied, setCopied] = useState(false);
+  const [appHint, setAppHint] = useState("");
 
-  // Reset all state when modal opens
   useEffect(() => {
-    if (isOpen) {
-      // Reset all state when modal opens
-      setIsConfirmed(false);
-      setShowError(false);
-      setTimeRemaining(TIMER_DURATION);
-      setIsTimerComplete(false);
-      console.log("Payment modal opened - state reset");
-    }
+    if (!isOpen) return;
+    setUtr("");
+    setConfirmChecked(false);
+    setShowValidation(false);
+    setOrderId(createOrderId());
+    setCopied(false);
+    setAppHint("");
   }, [isOpen]);
 
-  // Timer countdown effect - separate from reset logic
-  useEffect(() => {
-    if (!isOpen || isTimerComplete) {
-      return;
-    }
+  const amount = useMemo(() => {
+    if (!product) return 0;
+    const parsed = Number(product.price);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 50;
+  }, [product]);
 
-    if (timeRemaining <= 0) {
-      setIsTimerComplete(true);
-      console.log("Timer completed - checkbox available");
-      return;
-    }
-
-    const timer = setInterval(() => {
-      setTimeRemaining((prev) => {
-        const newValue = prev - 1;
-        if (newValue <= 0) {
-          setIsTimerComplete(true);
-          console.log("Timer completed - checkbox available");
-          return 0;
-        }
-        return newValue;
-      });
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [isOpen, isTimerComplete, timeRemaining]);
-
-  const upiDeeplink = useMemo(() => {
+  const transactionNote = useMemo(() => {
     if (!product) return "";
-    const transactionNote = formatTransactionNote(product.title);
-    return generateUPIDeeplink(product.price, transactionNote);
-  }, [product?.price, product?.title]);
+    return formatTransactionNote(product.title);
+  }, [product]);
 
   const upiPaymentString = useMemo(() => {
     if (!product) return "";
-    const transactionNote = formatTransactionNote(product.title);
-    return generateUPIPaymentString(product.price, transactionNote);
-  }, [product?.price, product?.title]);
+    return generateUPIPaymentString(amount, transactionNote);
+  }, [product, amount, transactionNote]);
+
+  const upiDeeplink = useMemo(() => {
+    if (!product) return "";
+    return generateUPIDeeplink(amount, transactionNote);
+  }, [product, amount, transactionNote]);
 
   const gpayDeeplink = useMemo(() => {
     if (!product) return "";
-    const transactionNote = formatTransactionNote(product.title);
-    return generateGPayDeeplink(product.price, transactionNote);
-  }, [product?.price, product?.title]);
+    return generateGPayDeeplink(amount, transactionNote);
+  }, [product, amount, transactionNote]);
 
   const phonePeDeeplink = useMemo(() => {
     if (!product) return "";
-    const transactionNote = formatTransactionNote(product.title);
-    return generatePhonePeDeeplink(product.price, transactionNote);
-  }, [product?.price, product?.title]);
+    return generatePhonePeDeeplink(amount, transactionNote);
+  }, [product, amount, transactionNote]);
+
+  const phonePeIntentUrl = useMemo(() => {
+    if (!product) return "";
+    return generatePhonePeIntentUrl(amount, transactionNote);
+  }, [product, amount, transactionNote]);
 
   if (!isOpen || !product) return null;
 
-  const handleUPIClick = () => {
-    window.location.href = upiDeeplink;
+  const utrValid = isValidUTR(utr);
+  const canSubmit = utrValid && confirmChecked;
+  const utrError = showValidation && !utrValid
+    ? "Enter a valid numeric UTR (10 to 18 digits)."
+    : "";
+
+  const openDeeplink = (link: string) => {
+    setAppHint("");
+    window.location.href = link;
   };
 
-  const handleGPayClick = () => {
-    window.location.href = gpayDeeplink;
-  };
+  const openPhonePe = () => {
+    setAppHint("");
 
-  const handlePhonePeClick = () => {
-    window.location.href = phonePeDeeplink;
-  };
+    const ua = navigator.userAgent.toLowerCase();
+    const isAndroid = ua.includes("android");
 
-  const handleWhatsAppClick = () => {
-    // Safety check - button should be disabled, but keep as fallback
-    if (!isConfirmed) {
-      console.warn("WhatsApp clicked without confirmation");
-      setShowError(true);
+    if (isAndroid) {
+      window.location.href = phonePeIntentUrl;
+      window.setTimeout(() => {
+        window.location.href = upiDeeplink;
+        setAppHint("PhonePe did not open. Choose PhonePe from the UPI app picker.");
+      }, 900);
       return;
     }
-    console.log("Opening WhatsApp with payment confirmation");
-    const message = encodeURIComponent(
-      `Hi, I have paid ₹${product.price} for PSD design: ${product.title}. Please share the file.`
-    );
-    window.open(`https://wa.me/918767980311?text=${message}`, "_blank");
-    onClose();
-    setIsConfirmed(false);
-    setShowError(false);
+
+    window.location.href = phonePeDeeplink;
+    window.setTimeout(() => {
+      window.location.href = upiDeeplink;
+      setAppHint("If PhonePe does not open on this device/browser, use UPI App or scan QR.");
+    }, 900);
   };
 
-  // Determine helper text and button text based on state
-  const getWhatsAppHelperText = () => {
-    if (!isTimerComplete) {
-      return "Please complete payment first";
+  const copyUPIId = async () => {
+    try {
+      await navigator.clipboard.writeText(getUPIId());
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setCopied(false);
     }
-    if (!isConfirmed) {
-      return "Please confirm payment above to enable WhatsApp";
-    }
-    return "Payment confirmed! Click to send confirmation";
-  };
-
-  const getWhatsAppButtonText = () => {
-    if (!isConfirmed) {
-      return "Complete payment first";
-    }
-    return "Send Payment Confirmation on WhatsApp";
   };
 
   const handleClose = () => {
     onClose();
-    setIsConfirmed(false);
-    setShowError(false);
+  };
+
+  const handleWhatsApp = () => {
+    setShowValidation(true);
+    if (!canSubmit) return;
+
+    const message = encodeURIComponent(
+      `Hello Shabdashri,\n\nI have completed payment.\n\nOrder ID: ${orderId}\nAmount: Rs ${amount}\nUTR: ${utr.trim()}\nProduct: ${product.title}\n\nPlease share my design files.`
+    );
+
+    window.open(`https://wa.me/${WHATSAPP_NUMBER}?text=${message}`, "_blank", "noopener,noreferrer");
+    onClose();
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-foreground/60 backdrop-blur-sm"
-        onClick={handleClose}
-      />
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
+      <div className="absolute inset-0 bg-foreground/60 backdrop-blur-sm" onClick={handleClose} />
 
-      {/* Modal */}
-      <div className="relative bg-card rounded-2xl shadow-modal max-w-md w-full max-h-[90vh] overflow-y-auto animate-scale-in">
-        {/* Header */}
-        <div className="sticky top-0 bg-card border-b border-border p-4 flex items-center justify-between rounded-t-2xl">
-          <h2 className="font-heading font-bold text-lg text-foreground">
-            Complete Payment
-          </h2>
+      <div className="relative bg-card rounded-2xl shadow-modal w-full max-w-md max-h-[92vh] overflow-y-auto animate-scale-in">
+        <div className="sticky top-0 z-10 bg-card border-b border-border p-4 flex items-center justify-between rounded-t-2xl">
+          <h2 className="font-heading font-bold text-lg text-foreground">Secure Payment Confirmation</h2>
           <Button variant="ghost" size="icon" onClick={handleClose}>
             <X className="h-5 w-5" />
           </Button>
         </div>
 
-        {/* Content */}
-        <div className="p-6 space-y-6">
-          {/* Product Info */}
-          <div className="flex gap-4 p-4 bg-secondary rounded-xl">
+        <div className="p-4 sm:p-6 space-y-5">
+          <div className="flex gap-3 p-3 bg-secondary rounded-xl">
             <img
               src={product.previewImage}
               alt={product.title}
-              className="w-16 h-16 rounded-lg object-cover"
+              className="w-14 h-14 sm:w-16 sm:h-16 rounded-lg object-cover"
             />
-            <div className="flex-1 min-w-0">
-              <h3 className="font-semibold text-foreground line-clamp-2">
-                {product.title}
-              </h3>
-              <p className="text-2xl font-bold text-primary mt-1">₹{product.price}</p>
+            <div className="min-w-0 flex-1">
+              <h3 className="font-semibold text-foreground line-clamp-2">{product.title}</h3>
+              <p className="text-2xl font-bold text-primary mt-1">Rs {amount}</p>
+              <p className="text-xs text-muted-foreground mt-1">Order ID: {orderId}</p>
             </div>
           </div>
 
-          {/* QR Code */}
-          <div className="text-center">
-            <h3 className="font-heading font-semibold text-foreground mb-3">
-              Scan QR Code to Pay
-            </h3>
-            <div className="bg-card p-4 rounded-xl inline-block border-2 border-primary/20">
+          <div className="text-center bg-card rounded-xl border border-primary/20 p-4">
+            <h3 className="font-heading font-semibold text-foreground mb-3">Scan QR Code to Pay</h3>
+            <div className="inline-block bg-white p-3 rounded-xl border border-border">
               <QRCodeSVG
                 value={upiPaymentString}
                 size={192}
-                level="M"
                 includeMargin
+                level="M"
                 bgColor="#ffffff"
                 fgColor="#111111"
-                title={`UPI payment QR for ${product.title}`}
-                className="w-48 h-48 mx-auto"
+                title={`UPI payment for ${product.title}`}
+                className="w-44 h-44 sm:w-48 sm:h-48"
               />
             </div>
-            <p className="mt-3 text-lg font-bold text-primary">
-              Pay ₹{product.price} Only via UPI
+            <p className="mt-3 text-sm text-muted-foreground">
+              UPI ID: <span className="font-semibold text-foreground">{getUPIId()}</span>
             </p>
-            <p className="text-sm text-muted-foreground mt-1">
-              UPI ID: <span className="font-medium text-foreground">{getUPIId()}</span>
-            </p>
-            
-            {/* Payment App Buttons */}
-            <div className="mt-4 flex flex-col sm:flex-row gap-3">
-              <Button
-                variant="outline"
-                className="flex-1 gap-2"
-                onClick={handleGPayClick}
-              >
-                <Smartphone className="h-4 w-4" />
-                Pay with GPay
-              </Button>
-              <Button
-                variant="outline"
-                className="flex-1 gap-2"
-                onClick={handlePhonePeClick}
-              >
-                <Smartphone className="h-4 w-4" />
-                Pay with PhonePe
-              </Button>
-            </div>
-          </div>
-
-          {/* Warning */}
-          <div className="bg-destructive/10 border border-destructive/20 rounded-xl p-4">
-            <div className="flex items-start gap-3">
-              <AlertTriangle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
-              <div>
-                <p className="font-semibold text-destructive">Important Notice</p>
-                <p className="text-sm text-destructive/90 mt-1">
-                  Partial payments are <strong>NOT accepted</strong>.
-                  Please pay the exact amount of <strong>₹{product.price}</strong>.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Delivery Note */}
-          <div className="bg-primary/10 border border-primary/20 rounded-xl p-4">
-            <div className="flex items-start gap-3">
-              <CheckCircle2 className="h-5 w-5 text-primary shrink-0 mt-0.5" />
-              <p className="text-sm text-foreground">
-                Design will be shared only after full payment verification.
-                You will receive the PSD file on WhatsApp within minutes!
-              </p>
-            </div>
-          </div>
-
-          {/* Timer & Confirmation Checkbox */}
-          <div className="space-y-2">
-            {!isTimerComplete ? (
-              <div className="flex items-center gap-3 p-3 bg-muted rounded-xl">
-                <Clock className="h-5 w-5 text-muted-foreground animate-pulse" />
-                <span className="text-sm text-muted-foreground">
-                  Please complete payment. Confirmation available in <strong className="text-foreground">{timeRemaining}s</strong>
-                </span>
-              </div>
-            ) : (
-              <label className="flex items-start gap-3 cursor-pointer p-3 bg-secondary rounded-xl hover:bg-secondary/80 transition-colors">
-                <Checkbox
-                  checked={isConfirmed}
-                  onCheckedChange={(checked) => {
-                    const newValue = checked as boolean;
-                    setIsConfirmed(newValue);
-                    console.log("Payment confirmation changed:", newValue);
-                    if (newValue) setShowError(false);
-                  }}
-                  className="mt-0.5"
-                />
-                <span className="text-sm text-foreground">
-                  I confirm that I have paid the full amount of <strong>₹{product.price}</strong> via UPI
-                </span>
-              </label>
-            )}
-
-            {showError && (
-              <p className="text-destructive text-sm font-medium flex items-center gap-2 animate-fade-in">
-                <AlertTriangle className="h-4 w-4" />
-                Please pay the full ₹{product.price} to continue
-              </p>
-            )}
-          </div>
-
-          {/* WhatsApp Button Section */}
-          <div className="space-y-2">
-            {/* Helper Text */}
-            <div className="text-center">
-              <p
-                className={`text-sm font-medium ${
-                  isConfirmed
-                    ? "text-primary"
-                    : "text-muted-foreground"
-                }`}
-              >
-                {getWhatsAppHelperText()}
-              </p>
-            </div>
-
-            {/* WhatsApp Button */}
-            <Button
-              className={`w-full gap-2 h-12 text-base transition-all ${
-                !isConfirmed ? "opacity-50" : "opacity-100"
-              }`}
-              onClick={handleWhatsAppClick}
-              disabled={!isConfirmed}
+            <button
+              type="button"
+              onClick={copyUPIId}
+              className="mt-2 inline-flex items-center gap-1 text-xs text-primary hover:underline"
             >
-              <MessageCircle className="h-5 w-5" />
-              {getWhatsAppButtonText()}
+              <Copy className="h-3.5 w-3.5" />
+              {copied ? "Copied" : "Copy UPI ID"}
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <Button variant="outline" className="gap-2" onClick={() => openDeeplink(upiDeeplink)}>
+              <Smartphone className="h-4 w-4" />
+              UPI App
+            </Button>
+            <Button variant="outline" className="gap-2" onClick={() => openDeeplink(gpayDeeplink)}>
+              <Smartphone className="h-4 w-4" />
+              GPay
+            </Button>
+            <Button variant="outline" className="gap-2" onClick={openPhonePe}>
+              <Smartphone className="h-4 w-4" />
+              PhonePe
             </Button>
           </div>
+          {appHint && <p className="text-xs text-muted-foreground">{appHint}</p>}
 
-          <p className="text-center text-xs text-muted-foreground">
-            By clicking above, you agree to our terms and conditions
-          </p>
+          <div>
+            <label htmlFor="utr" className="text-sm font-medium text-foreground block mb-2">
+              Enter UTR Number
+            </label>
+            <input
+              id="utr"
+              type="text"
+              inputMode="numeric"
+              autoComplete="off"
+              placeholder="Enter 12-digit UTR number"
+              value={utr}
+              onChange={(e) => setUtr(e.target.value.replace(/\D/g, ""))}
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              maxLength={18}
+            />
+            <p className={`mt-1 text-xs ${utrError ? "text-destructive" : "text-muted-foreground"}`}>
+              {utrError || "UTR must be numeric and 10 to 18 digits."}
+            </p>
+          </div>
+
+          <label className="flex items-start gap-3 cursor-pointer p-3 bg-secondary rounded-xl">
+            <Checkbox
+              checked={confirmChecked}
+              onCheckedChange={(checked) => setConfirmChecked(Boolean(checked))}
+              className="mt-0.5"
+            />
+            <span className="text-sm text-foreground">
+              I confirm I paid the exact amount and entered the correct UTR for verification.
+            </span>
+          </label>
+
+          <div className="bg-primary/10 border border-primary/20 rounded-xl p-3">
+            <div className="flex items-start gap-2">
+              <CheckCircle2 className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+              <p className="text-xs text-foreground">
+                Security note: your file is shared only after manual payment verification using this UTR.
+              </p>
+            </div>
+          </div>
+
+          <div className="bg-destructive/10 border border-destructive/20 rounded-xl p-3">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
+              <p className="text-xs text-foreground">
+                If UPI app shows bank limit/debit error, retry from another UPI app or lower amount as per your bank limit.
+              </p>
+            </div>
+          </div>
+
+          <Button className="w-full gap-2 h-11" onClick={handleWhatsApp} disabled={!canSubmit}>
+            <MessageCircle className="h-5 w-5" />
+            Submit UTR on WhatsApp
+          </Button>
         </div>
       </div>
     </div>
   );
 }
+

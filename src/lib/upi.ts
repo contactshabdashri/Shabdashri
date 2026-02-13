@@ -101,6 +101,26 @@ export function generatePhonePeDeeplink(
 }
 
 /**
+ * Generate Android intent URL for PhonePe.
+ * This is more reliable than phonepe:// in many Android browsers.
+ */
+export function generatePhonePeIntentUrl(
+  amount: number,
+  transactionNote: string
+): string {
+  const formattedAmount = amount.toFixed(2);
+  const params = new URLSearchParams({
+    pa: UPI_ID,
+    pn: MERCHANT_NAME,
+    am: formattedAmount,
+    cu: "INR",
+    tn: transactionNote,
+  });
+
+  return `intent://upi/pay?${params.toString()}#Intent;scheme=upi;package=com.phonepe.app;end`;
+}
+
+/**
  * Format transaction note for product purchase
  */
 export function formatTransactionNote(productTitle: string): string {
