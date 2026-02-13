@@ -334,9 +334,14 @@
 
     <script>
       // Dynamic order/payment values
-      const PAYMENT_AMOUNT = 499;
-      const UPI_ID = "vishalshinde8747@okhdfcbank";
-      const WA_NUMBER = "919999999999";
+      const params = new URLSearchParams(window.location.search);
+      const amountFromUrl = Number(params.get("amount"));
+      const PAYMENT_AMOUNT =
+        Number.isFinite(amountFromUrl) && amountFromUrl > 0
+          ? amountFromUrl
+          : 499;
+      const UPI_ID = "priyankakatore819@okicici";
+      const WA_NUMBER = "918767980311";
 
       const paymentSection = document.getElementById("payment-section");
       const successSection = document.getElementById("success-section");
@@ -412,7 +417,7 @@
 
         const message =
           "Hello Shabdashri,\n\n" +
-          "I have completed payment.\n\n" +
+          "Payment successful, please send item/product.\n\n" +
           "Order ID: " + orderId + "\n" +
           "Amount: ₹" + PAYMENT_AMOUNT + "\n" +
           "UTR: " + utr + "\n\n" +

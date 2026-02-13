@@ -1,27 +1,22 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
-  Copy,
+  Loader2,
   MessageCircle,
-  Smartphone,
+  ShieldCheck,
   X,
 } from "lucide-react";
-import { QRCodeSVG } from "qrcode.react";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import type { Product } from "@/data/products";
+import { getUPIId } from "@/lib/upi";
 import {
-  formatTransactionNote,
-  generateGPayDeeplink,
-  generateGPayIntentUrl,
-  generateGPayIOSDeeplink,
-  generatePhonePeDeeplink,
-  generatePhonePeIntentUrl,
-  generateUPIDeeplink,
-  generateUPIPaymentString,
-  getUPIId,
-} from "@/lib/upi";
+  createGatewayOrder,
+  getGatewayPaymentStatus,
+  loadRazorpayCheckoutScript,
+  submitGatewayPayment,
+  type CreateGatewayOrderResponse,
+} from "@/lib/payments";
 
 interface PaymentModalProps {
   product: Product | null;
@@ -29,36 +24,61 @@ interface PaymentModalProps {
   onClose: () => void;
 }
 
-const WHATSAPP_NUMBER = "918767980311";
+type UiStatus =
+  | "idle"
+  | "creating_order"
+  | "checkout_open"
+  | "verifying"
+  | "success"
+  | "failed";
 
-function createOrderId(): string {
-  const now = Date.now().toString().slice(-8);
-  const random = Math.floor(1000 + Math.random() * 9000);
-  return `SHB${now}${random}`;
+const WHATSAPP_NUMBER = "918767980311";
+const VERIFICATION_POLL_ATTEMPTS = 30;
+const VERIFICATION_POLL_MS = 2000;
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
-function isValidUTR(value: string): boolean {
-  return /^\d{10,18}$/.test(value.trim());
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message.trim()) return error.message;
+  if (typeof error === "string" && error.trim()) return error;
+  return fallback;
 }
 
 export function PaymentModal({ product, isOpen, onClose }: PaymentModalProps) {
-  const [utr, setUtr] = useState("");
-  const [confirmChecked, setConfirmChecked] = useState(false);
-  const [showValidation, setShowValidation] = useState(false);
-  const [orderId, setOrderId] = useState("");
-  const [copied, setCopied] = useState(false);
-  const [appHint, setAppHint] = useState("");
-  const [hasInitiatedPayment, setHasInitiatedPayment] = useState(false);
+  const [uiStatus, setUiStatus] = useState<UiStatus>("idle");
+  const [statusMessage, setStatusMessage] = useState("");
+  const [gatewayOrder, setGatewayOrder] = useState<CreateGatewayOrderResponse | null>(null);
+  const [redirectCountdown, setRedirectCountdown] = useState<number | null>(null);
+
+  const isActiveRef = useRef(false);
+  const pollAbortRef = useRef(false);
+  const whatsappRedirectedRef = useRef(false);
 
   useEffect(() => {
-    if (!isOpen) return;
-    setUtr("");
-    setConfirmChecked(false);
-    setShowValidation(false);
-    setOrderId(createOrderId());
-    setCopied(false);
-    setAppHint("");
-    setHasInitiatedPayment(false);
+    isActiveRef.current = isOpen;
+    if (!isOpen) {
+      pollAbortRef.current = true;
+      whatsappRedirectedRef.current = false;
+      setUiStatus("idle");
+      setStatusMessage("");
+      setGatewayOrder(null);
+      setRedirectCountdown(null);
+      return;
+    }
+
+    pollAbortRef.current = false;
+    whatsappRedirectedRef.current = false;
+    setUiStatus("idle");
+    setStatusMessage("");
+    setGatewayOrder(null);
+    setRedirectCountdown(null);
+
+    return () => {
+      isActiveRef.current = false;
+      pollAbortRef.current = true;
+    };
   }, [isOpen]);
 
   const amount = useMemo(() => {
@@ -67,204 +87,231 @@ export function PaymentModal({ product, isOpen, onClose }: PaymentModalProps) {
     return Number.isFinite(parsed) && parsed > 0 ? parsed : 50;
   }, [product]);
 
-  const transactionNote = useMemo(() => {
+  const whatsappMessage = useMemo(() => {
     if (!product) return "";
-    return formatTransactionNote(product.title);
-  }, [product]);
+    const orderRef = gatewayOrder?.razorpayOrderId || "N/A";
+    return encodeURIComponent(
+      `Payment successful, please send item/product.\n\nOrder Ref: ${orderRef}\nProduct: ${product.title}\nAmount: Rs ${amount}`
+    );
+  }, [amount, gatewayOrder?.razorpayOrderId, product]);
 
-  const upiPaymentString = useMemo(() => {
-    if (!product) return "";
-    return generateUPIPaymentString(amount, transactionNote);
-  }, [product, amount, transactionNote]);
+  const openWhatsApp = useCallback(() => {
+    if (!product || whatsappRedirectedRef.current) return;
+    whatsappRedirectedRef.current = true;
+    window.location.assign(`https://wa.me/${WHATSAPP_NUMBER}?text=${whatsappMessage}`);
+  }, [product, whatsappMessage]);
 
-  const upiDeeplink = useMemo(() => {
-    if (!product) return "";
-    return generateUPIDeeplink(amount, transactionNote);
-  }, [product, amount, transactionNote]);
+  useEffect(() => {
+    if (!isOpen || uiStatus !== "success" || redirectCountdown === null) return;
+    if (redirectCountdown <= 0) {
+      openWhatsApp();
+      return;
+    }
 
-  const gpayDeeplink = useMemo(() => {
-    if (!product) return "";
-    return generateGPayDeeplink(amount, transactionNote);
-  }, [product, amount, transactionNote]);
-  const gpayIOSDeeplink = useMemo(() => {
-    if (!product) return "";
-    return generateGPayIOSDeeplink(amount, transactionNote);
-  }, [product, amount, transactionNote]);
-  const gpayIntentUrl = useMemo(() => {
-    if (!product) return "";
-    return generateGPayIntentUrl(amount, transactionNote);
-  }, [product, amount, transactionNote]);
+    const timer = window.setTimeout(() => {
+      setRedirectCountdown((current) => (current === null ? null : current - 1));
+    }, 1000);
 
-  const phonePeDeeplink = useMemo(() => {
-    if (!product) return "";
-    return generatePhonePeDeeplink(amount, transactionNote);
-  }, [product, amount, transactionNote]);
+    return () => window.clearTimeout(timer);
+  }, [isOpen, openWhatsApp, redirectCountdown, uiStatus]);
 
-  const phonePeIntentUrl = useMemo(() => {
-    if (!product) return "";
-    return generatePhonePeIntentUrl(amount, transactionNote);
-  }, [product, amount, transactionNote]);
+  const pollFinalStatus = useCallback(async (paymentToken: string) => {
+    for (let attempt = 0; attempt < VERIFICATION_POLL_ATTEMPTS; attempt += 1) {
+      if (pollAbortRef.current) return;
+
+      let statusResponse;
+      try {
+        statusResponse = await getGatewayPaymentStatus(paymentToken);
+      } catch (error) {
+        if (attempt === VERIFICATION_POLL_ATTEMPTS - 1) {
+          throw error;
+        }
+        await wait(VERIFICATION_POLL_MS);
+        continue;
+      }
+
+      if (statusResponse.status === "success") {
+        if (!isActiveRef.current) return;
+        setUiStatus("success");
+        setStatusMessage("Payment successful.");
+        setRedirectCountdown(3);
+        return;
+      }
+
+      if (statusResponse.status === "failed" || statusResponse.status === "cancelled") {
+        if (!isActiveRef.current) return;
+        setUiStatus("failed");
+        setStatusMessage(
+          statusResponse.failureReason || "Payment unsuccessful, please try again."
+        );
+        setRedirectCountdown(null);
+        return;
+      }
+
+      await wait(VERIFICATION_POLL_MS);
+    }
+
+    if (!isActiveRef.current) return;
+    setUiStatus("failed");
+    setStatusMessage(
+      "Payment verification timed out. If amount was debited, contact support with your order reference."
+    );
+    setRedirectCountdown(null);
+  }, []);
+
+  const startAutoVerifiedPayment = async () => {
+    if (!product) return;
+
+    pollAbortRef.current = false;
+    setUiStatus("creating_order");
+    setStatusMessage("");
+    setRedirectCountdown(null);
+
+    try {
+      const order = await createGatewayOrder(product.id);
+      if (!isActiveRef.current) return;
+      setGatewayOrder(order);
+
+      const sdkLoaded = await loadRazorpayCheckoutScript();
+      if (!sdkLoaded) {
+        throw new Error("Unable to load secure payment SDK. Please refresh and try again.");
+      }
+
+      if (!(window as any).Razorpay) {
+        throw new Error("Payment SDK unavailable. Please try again.");
+      }
+
+      if (!isActiveRef.current) return;
+      setUiStatus("checkout_open");
+
+      const razorpayInstance = new (window as any).Razorpay({
+        key: order.checkoutKeyId,
+        amount: order.amountPaise,
+        currency: order.currency,
+        name: order.merchantName,
+        description: `Purchase: ${order.productTitle}`,
+        order_id: order.razorpayOrderId,
+        notes: {
+          payment_token: order.paymentToken,
+          product_id: product.id,
+        },
+        retry: { enabled: true },
+        theme: { color: "#0f766e" },
+        modal: {
+          ondismiss: async () => {
+            if (!isActiveRef.current) return;
+
+            try {
+              await submitGatewayPayment({
+                paymentToken: order.paymentToken,
+                razorpayOrderId: order.razorpayOrderId,
+                gatewayEvent: "checkout_dismissed",
+                failureReason: "checkout_dismissed",
+              });
+            } catch (error) {
+              console.error("Failed to mark dismissed checkout:", error);
+            }
+
+            if (!isActiveRef.current) return;
+            setUiStatus("failed");
+            setStatusMessage("Payment popup was closed. Please try again.");
+            setRedirectCountdown(null);
+          },
+        },
+        handler: async (response: any) => {
+          if (!isActiveRef.current) return;
+          setUiStatus("verifying");
+          setStatusMessage("Verifying payment with gateway...");
+
+          try {
+            await submitGatewayPayment({
+              paymentToken: order.paymentToken,
+              razorpayOrderId: response.razorpay_order_id,
+              razorpayPaymentId: response.razorpay_payment_id,
+              razorpaySignature: response.razorpay_signature,
+              gatewayEvent: "checkout_success",
+            });
+          } catch (error) {
+            if (!isActiveRef.current) return;
+            setUiStatus("failed");
+            setStatusMessage(
+              getErrorMessage(error, "Payment verification failed. Please retry.")
+            );
+            return;
+          }
+
+          try {
+            await pollFinalStatus(order.paymentToken);
+          } catch (error) {
+            if (!isActiveRef.current) return;
+            setUiStatus("failed");
+            setStatusMessage(
+              getErrorMessage(error, "Payment verification failed. Please retry.")
+            );
+          }
+        },
+      });
+
+      razorpayInstance.on("payment.failed", async (response: any) => {
+        const failureReason =
+          response?.error?.description || "Payment unsuccessful, please try again.";
+
+        try {
+          await submitGatewayPayment({
+            paymentToken: order.paymentToken,
+            razorpayOrderId: order.razorpayOrderId,
+            razorpayPaymentId: response?.error?.metadata?.payment_id,
+            gatewayEvent: "payment_failed",
+            failureReason,
+          });
+        } catch (error) {
+          console.error("Failed to submit payment.failed state:", error);
+        }
+
+        if (!isActiveRef.current) return;
+        setUiStatus("failed");
+        setStatusMessage(failureReason);
+        setRedirectCountdown(null);
+      });
+
+      razorpayInstance.open();
+    } catch (error) {
+      if (!isActiveRef.current) return;
+      setUiStatus("failed");
+      setStatusMessage(getErrorMessage(error, "Unable to start payment. Please try again."));
+      setRedirectCountdown(null);
+    }
+  };
 
   if (!isOpen || !product) return null;
-  const { isIOS, isInAppBrowser } = getPlatform();
 
-  const utrValid = isValidUTR(utr);
-  const canSubmit = utrValid && confirmChecked && hasInitiatedPayment;
-  const utrError = showValidation && !utrValid
-    ? "Enter a valid numeric UTR (10 to 18 digits)."
-    : "";
-  const processError = showValidation && !hasInitiatedPayment
-    ? "Open a payment app first to start payment."
-    : "";
-
-  function getPlatform() {
-    const ua = navigator.userAgent.toLowerCase();
-    const isAndroid = ua.includes("android");
-    const isIOS = /iphone|ipad|ipod/.test(ua) || (ua.includes("mac") && "ontouchend" in document);
-    const isInAppBrowser =
-      ua.includes("wv") ||
-      ua.includes("whatsapp") ||
-      ua.includes("instagram") ||
-      ua.includes("fbav") ||
-      ua.includes("fb_iab") ||
-      ua.includes("messenger");
-    return { isAndroid, isIOS, isInAppBrowser };
-  }
-
-  const openDeeplink = (link: string) => {
-    setAppHint("");
-    const { isIOS, isInAppBrowser } = getPlatform();
-    if (isIOS && isInAppBrowser) {
-      setAppHint("Open this page in Safari, then tap UPI App/GPay/PhonePe. In-app browsers may open WhatsApp instead.");
-      return;
-    }
-    setHasInitiatedPayment(true);
-    window.location.assign(link);
-    if (isIOS) {
-      window.setTimeout(() => {
-        setAppHint("If app did not open on iPhone Safari/Chrome, use Scan QR Code option.");
-      }, 900);
-    }
-  };
-
-  const openPhonePe = () => {
-    setAppHint("");
-    const { isAndroid, isIOS, isInAppBrowser } = getPlatform();
-    if (isIOS && isInAppBrowser) {
-      setAppHint("Open this page in Safari first. WhatsApp/Instagram browser cannot reliably open PhonePe.");
-      return;
-    }
-    setHasInitiatedPayment(true);
-
-    if (isAndroid) {
-      window.location.assign(phonePeIntentUrl);
-      window.setTimeout(() => {
-        setAppHint("If PhonePe did not open, tap UPI App button and choose PhonePe.");
-      }, 900);
-      return;
-    }
-
-    if (isIOS) {
-      window.location.assign(phonePeDeeplink);
-      window.setTimeout(() => {
-        setAppHint("If PhonePe is not installed, install PhonePe or use the QR scan option.");
-      }, 900);
-      return;
-    }
-
-    window.location.assign(phonePeDeeplink);
-    window.setTimeout(() => {
-      setAppHint("If PhonePe does not open on this device/browser, use UPI App button.");
-    }, 900);
-  };
-
-  const openGPay = () => {
-    setAppHint("");
-    const { isAndroid, isIOS, isInAppBrowser } = getPlatform();
-    if (isIOS && isInAppBrowser) {
-      setAppHint("Open this page in Safari first. WhatsApp/Instagram browser cannot reliably open GPay.");
-      return;
-    }
-    setHasInitiatedPayment(true);
-
-    if (isAndroid) {
-      window.location.assign(gpayIntentUrl);
-      window.setTimeout(() => {
-        setAppHint("If GPay did not open, tap UPI App button and choose GPay.");
-      }, 900);
-      return;
-    }
-
-    if (isIOS) {
-      window.location.assign(gpayIOSDeeplink);
-      window.setTimeout(() => {
-        setAppHint("If GPay is not installed, install GPay or use the QR scan option.");
-      }, 900);
-      return;
-    }
-
-    window.location.assign(gpayDeeplink);
-    window.setTimeout(() => {
-      setAppHint("If GPay does not open on this device/browser, use UPI App button.");
-    }, 900);
-  };
-
-  const copyUPIId = async () => {
-    try {
-      await navigator.clipboard.writeText(getUPIId());
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1500);
-    } catch {
-      setCopied(false);
-    }
-  };
-
-  const handleClose = () => {
-    onClose();
-  };
-
-  const handleWhatsApp = () => {
-    setShowValidation(true);
-    if (!canSubmit) return;
-
-    const message = encodeURIComponent(
-      `Hello Shabdashri,\n\nI have completed payment.\n\nOrder ID: ${orderId}\nAmount: Rs ${amount}\nUTR: ${utr.trim()}\nProduct: ${product.title}\n\nPlease share my design files.`
-    );
-
-    window.open(`https://wa.me/${WHATSAPP_NUMBER}?text=${message}`, "_blank", "noopener,noreferrer");
-    onClose();
-  };
+  const isBusy =
+    uiStatus === "creating_order" ||
+    uiStatus === "checkout_open" ||
+    uiStatus === "verifying";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4">
-      <div className="absolute inset-0 bg-foreground/60 backdrop-blur-sm" onClick={handleClose} />
+      <div className="absolute inset-0 bg-foreground/60 backdrop-blur-sm" onClick={onClose} />
 
       <div className="relative bg-card rounded-2xl shadow-modal w-full max-w-md max-h-[92vh] overflow-y-auto animate-scale-in pb-[max(1rem,env(safe-area-inset-bottom))]">
         <div className="sticky top-0 z-10 bg-card border-b border-border p-4 flex items-center justify-between rounded-t-2xl">
-          <h2 className="font-heading font-bold text-lg text-foreground">Secure Payment Confirmation</h2>
-          <Button type="button" variant="ghost" size="icon" onClick={handleClose}>
+          <h2 className="font-heading font-bold text-lg text-foreground">Secure UPI Checkout</h2>
+          <Button type="button" variant="ghost" size="icon" onClick={onClose}>
             <X className="h-5 w-5" />
           </Button>
         </div>
 
         <div className="p-4 sm:p-6 space-y-5">
-          {isIOS && isInAppBrowser && (
-            <div className="bg-amber-50 border border-amber-300 rounded-xl p-3">
-              <p className="text-xs text-amber-900">
-                You are in an in-app browser. Please open this page in Safari to complete payment app redirects.
-              </p>
-            </div>
-          )}
-
           <div className="grid grid-cols-3 gap-2 text-[11px] sm:text-xs">
-            <div className={`rounded-md px-2 py-1 text-center border ${hasInitiatedPayment ? "bg-primary/10 border-primary/20 text-foreground" : "bg-muted border-border text-muted-foreground"}`}>
-              1. Pay
+            <div className={`rounded-md px-2 py-1 text-center border ${uiStatus !== "idle" ? "bg-primary/10 border-primary/20 text-foreground" : "bg-muted border-border text-muted-foreground"}`}>
+              1. Order
             </div>
-            <div className={`rounded-md px-2 py-1 text-center border ${utrValid ? "bg-primary/10 border-primary/20 text-foreground" : "bg-muted border-border text-muted-foreground"}`}>
-              2. UTR
+            <div className={`rounded-md px-2 py-1 text-center border ${uiStatus === "checkout_open" || uiStatus === "verifying" || uiStatus === "success" || uiStatus === "failed" ? "bg-primary/10 border-primary/20 text-foreground" : "bg-muted border-border text-muted-foreground"}`}>
+              2. Pay
             </div>
-            <div className={`rounded-md px-2 py-1 text-center border ${confirmChecked ? "bg-primary/10 border-primary/20 text-foreground" : "bg-muted border-border text-muted-foreground"}`}>
-              3. Confirm
+            <div className={`rounded-md px-2 py-1 text-center border ${uiStatus === "verifying" || uiStatus === "success" || uiStatus === "failed" ? "bg-primary/10 border-primary/20 text-foreground" : "bg-muted border-border text-muted-foreground"}`}>
+              3. Verify
             </div>
           </div>
 
@@ -277,108 +324,96 @@ export function PaymentModal({ product, isOpen, onClose }: PaymentModalProps) {
             <div className="min-w-0 flex-1">
               <h3 className="font-semibold text-foreground line-clamp-2">{product.title}</h3>
               <p className="text-2xl font-bold text-primary mt-1">Rs {amount}</p>
-              <p className="text-xs text-muted-foreground mt-1">Order ID: {orderId}</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                UPI ID: <span className="font-medium">{getUPIId()}</span>
+              </p>
             </div>
           </div>
-
-          <div className="text-center bg-card rounded-xl border border-primary/20 p-4">
-            <h3 className="font-heading font-semibold text-foreground mb-3">Scan QR Code to Pay</h3>
-            <div className="inline-block bg-white p-3 rounded-xl border border-border">
-              <QRCodeSVG
-                value={upiPaymentString}
-                size={176}
-                includeMargin
-                level="M"
-                bgColor="#ffffff"
-                fgColor="#111111"
-                title={`UPI payment for ${product.title}`}
-                className="w-40 h-40 sm:w-44 sm:h-44"
-              />
-            </div>
-            <p className="mt-3 text-sm text-muted-foreground">
-              UPI ID: <span className="font-semibold text-foreground">{getUPIId()}</span>
-            </p>
-            <button
-              type="button"
-              onClick={copyUPIId}
-              className="mt-2 inline-flex items-center gap-1 text-xs text-primary hover:underline"
-            >
-              <Copy className="h-3.5 w-3.5" />
-              {copied ? "Copied" : "Copy UPI ID"}
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-            <Button type="button" variant="outline" className="gap-2" onClick={() => openDeeplink(upiDeeplink)}>
-              <Smartphone className="h-4 w-4" />
-              UPI App
-            </Button>
-            <Button type="button" variant="outline" className="gap-2" onClick={openGPay}>
-              <Smartphone className="h-4 w-4" />
-              GPay
-            </Button>
-            <Button type="button" variant="outline" className="gap-2" onClick={openPhonePe}>
-              <Smartphone className="h-4 w-4" />
-              PhonePe
-            </Button>
-          </div>
-          {appHint && <p className="text-xs text-muted-foreground">{appHint}</p>}
-
-          <div>
-            <label htmlFor="utr" className="text-sm font-medium text-foreground block mb-2">
-              Enter UTR Number
-            </label>
-            <input
-              id="utr"
-              type="text"
-              inputMode="numeric"
-              autoComplete="off"
-              placeholder="Enter 12-digit UTR number"
-              value={utr}
-              onChange={(e) => setUtr(e.target.value.replace(/\D/g, ""))}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              maxLength={18}
-            />
-            <p className={`mt-1 text-xs ${utrError ? "text-destructive" : "text-muted-foreground"}`}>
-              {utrError || "UTR must be numeric and 10 to 18 digits."}
-            </p>
-          </div>
-
-          <label className="flex items-start gap-3 cursor-pointer p-3 bg-secondary rounded-xl">
-            <Checkbox
-              checked={confirmChecked}
-              onCheckedChange={(checked) => setConfirmChecked(Boolean(checked))}
-              disabled={!hasInitiatedPayment}
-              className="mt-0.5"
-            />
-            <span className="text-sm text-foreground">
-              I confirm I paid the exact amount and entered the correct UTR for verification.
-            </span>
-          </label>
-          {processError && <p className="text-xs text-destructive -mt-3">{processError}</p>}
 
           <div className="bg-primary/10 border border-primary/20 rounded-xl p-3">
             <div className="flex items-start gap-2">
-              <CheckCircle2 className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+              <ShieldCheck className="h-4 w-4 text-primary shrink-0 mt-0.5" />
               <p className="text-xs text-foreground">
-                Security note: your file is shared only after manual payment verification using this UTR.
+                Real-time gateway verification is enabled. This supports UPI apps like Google Pay and PhonePe with webhook-confirmed status.
               </p>
             </div>
           </div>
 
-          <div className="bg-destructive/10 border border-destructive/20 rounded-xl p-3">
-            <div className="flex items-start gap-2">
-              <AlertTriangle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
-              <p className="text-xs text-foreground">
-                If UPI app shows bank limit/debit error, retry from another UPI app or lower amount as per your bank limit.
-              </p>
-            </div>
-          </div>
-
-          <Button type="button" className="w-full gap-2 h-11 text-sm sm:text-base" onClick={handleWhatsApp} disabled={!canSubmit}>
-            <MessageCircle className="h-5 w-5" />
-            Submit UTR on WhatsApp
+          <Button
+            type="button"
+            className="w-full h-11 text-sm sm:text-base"
+            onClick={startAutoVerifiedPayment}
+            disabled={isBusy}
+          >
+            {uiStatus === "creating_order" && (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Creating Secure Order...
+              </>
+            )}
+            {uiStatus === "checkout_open" && (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Waiting For Payment...
+              </>
+            )}
+            {uiStatus === "verifying" && (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Verifying Payment...
+              </>
+            )}
+            {(uiStatus === "idle" || uiStatus === "failed" || uiStatus === "success") &&
+              `Pay Rs ${amount} (GPay / PhonePe / UPI)`}
           </Button>
+
+          {uiStatus === "verifying" && (
+            <p className="text-xs text-muted-foreground text-center">
+              Checking webhook confirmation. Please keep this page open.
+            </p>
+          )}
+
+          {uiStatus === "success" && (
+            <div className="bg-primary/10 border border-primary/20 rounded-xl p-3 space-y-3">
+              <div className="flex items-start gap-2">
+                <CheckCircle2 className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+                <p className="text-xs text-foreground">
+                  {statusMessage || "Payment successful."} Redirecting to WhatsApp in{" "}
+                  {redirectCountdown ?? 0} seconds.
+                </p>
+              </div>
+              <Button type="button" className="w-full gap-2" onClick={openWhatsApp}>
+                <MessageCircle className="h-4 w-4" />
+                Open WhatsApp Now
+              </Button>
+            </div>
+          )}
+
+          {uiStatus === "failed" && (
+            <div className="bg-destructive/10 border border-destructive/20 rounded-xl p-3 space-y-3">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
+                <p className="text-xs text-foreground">
+                  {statusMessage || "Payment unsuccessful, please try again."}
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                onClick={startAutoVerifiedPayment}
+                disabled={isBusy}
+              >
+                Try Payment Again
+              </Button>
+            </div>
+          )}
+
+          {gatewayOrder?.razorpayOrderId && (
+            <p className="text-[11px] text-muted-foreground text-center">
+              Order Ref: {gatewayOrder.razorpayOrderId}
+            </p>
+          )}
         </div>
       </div>
     </div>

@@ -220,8 +220,8 @@ export default function ProductDetail() {
 
               <div className="bg-primary/10 border border-primary/20 rounded-xl p-4">
                 <p className="text-sm text-foreground">
-                  <strong>How to buy:</strong> Click "Buy Now", pay ₹{convertedProduct.price} via UPI QR code, 
-                  confirm payment on WhatsApp, and receive your PSD file instantly!
+                  <strong>How to buy:</strong> Click "Buy Now", complete payment using Google Pay/PhonePe/UPI,
+                  and payment status is auto-verified before redirecting to WhatsApp.
                 </p>
               </div>
             </div>

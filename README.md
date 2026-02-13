@@ -71,3 +71,44 @@ Yes, you can!
 To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
 
 Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+
+## Razorpay webhook payment setup
+
+This project now supports automatic payment verification using Razorpay + Supabase Edge Functions.
+
+### 1) Run latest Supabase migration
+
+Apply migration `supabase/migrations/005_create_payment_orders.sql` to create `payment_orders`.
+
+### 2) Set Supabase Edge Function secrets
+
+Set these secrets in your Supabase project:
+
+- `RAZORPAY_KEY_ID`
+- `RAZORPAY_KEY_SECRET`
+- `RAZORPAY_WEBHOOK_SECRET`
+- `SUPABASE_SERVICE_ROLE_KEY` (usually already available in function runtime)
+
+### 3) Deploy Edge Functions
+
+Deploy these functions:
+
+- `create-razorpay-order`
+- `submit-razorpay-payment`
+- `payment-status`
+- `razorpay-webhook`
+
+### 4) Configure Razorpay webhook
+
+In Razorpay dashboard, set webhook URL to:
+
+`https://<YOUR_PROJECT_REF>.functions.supabase.co/razorpay-webhook`
+
+Select events:
+
+- `payment.authorized`
+- `payment.captured`
+- `payment.failed`
+- `order.paid`
+
+Use the same secret value as `RAZORPAY_WEBHOOK_SECRET`.

@@ -1,12 +1,2 @@
 project_id = "ojukbnabzpzlawlpzjcb"
 
-# Supabase Project Configuration
-# Get these values from: https://supabase.com/dashboard/project/_/settings/api
-
-# Project URL (e.g., https://xxxxx.supabase.co)
-project_url = "https://ojukbnabzpzlawlpzjcb.supabase.co"
-
-# Anon/Public Key (safe to expose in client-side code)
-# This goes in .env as VITE_SUPABASE_ANON_KEY
-anon_key = ""
-
