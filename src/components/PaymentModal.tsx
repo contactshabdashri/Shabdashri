@@ -111,32 +111,51 @@ export function PaymentModal({ product, isOpen, onClose }: PaymentModalProps) {
     ? "Open a payment app first to start payment."
     : "";
 
+  const getPlatform = () => {
+    const ua = navigator.userAgent.toLowerCase();
+    const isAndroid = ua.includes("android");
+    const isIOS = /iphone|ipad|ipod/.test(ua) || (ua.includes("mac") && "ontouchend" in document);
+    return { isAndroid, isIOS };
+  };
+
   const openDeeplink = (link: string) => {
     setAppHint("");
     setHasInitiatedPayment(true);
-    window.location.href = link;
+    window.location.assign(link);
+    const { isIOS } = getPlatform();
+    if (isIOS) {
+      window.setTimeout(() => {
+        setAppHint("If app did not open on iPhone Safari/Chrome, use Scan QR Code option.");
+      }, 900);
+    }
   };
 
   const openPhonePe = () => {
     setAppHint("");
     setHasInitiatedPayment(true);
 
-    const ua = navigator.userAgent.toLowerCase();
-    const isAndroid = ua.includes("android");
+    const { isAndroid, isIOS } = getPlatform();
 
     if (isAndroid) {
-      window.location.href = phonePeIntentUrl;
+      window.location.assign(phonePeIntentUrl);
       window.setTimeout(() => {
-        window.location.href = upiDeeplink;
-        setAppHint("PhonePe did not open. Choose PhonePe from the UPI app picker.");
+        setAppHint("If PhonePe did not open, tap UPI App button and choose PhonePe.");
       }, 900);
       return;
     }
 
-    window.location.href = phonePeDeeplink;
+    if (isIOS) {
+      window.location.assign(phonePeDeeplink);
+      window.setTimeout(() => {
+        window.location.assign(upiDeeplink);
+        setAppHint("If PhonePe did not open on iPhone, choose PhonePe from UPI options.");
+      }, 900);
+      return;
+    }
+
+    window.location.assign(phonePeDeeplink);
     window.setTimeout(() => {
-      window.location.href = upiDeeplink;
-      setAppHint("If PhonePe does not open on this device/browser, use UPI App or scan QR.");
+      setAppHint("If PhonePe does not open on this device/browser, use UPI App button.");
     }, 900);
   };
 
@@ -144,22 +163,28 @@ export function PaymentModal({ product, isOpen, onClose }: PaymentModalProps) {
     setAppHint("");
     setHasInitiatedPayment(true);
 
-    const ua = navigator.userAgent.toLowerCase();
-    const isAndroid = ua.includes("android");
+    const { isAndroid, isIOS } = getPlatform();
 
     if (isAndroid) {
-      window.location.href = gpayIntentUrl;
+      window.location.assign(gpayIntentUrl);
       window.setTimeout(() => {
-        window.location.href = upiDeeplink;
-        setAppHint("GPay did not open. Choose GPay from the UPI app picker.");
+        setAppHint("If GPay did not open, tap UPI App button and choose GPay.");
       }, 900);
       return;
     }
 
-    window.location.href = gpayDeeplink;
+    if (isIOS) {
+      window.location.assign(gpayDeeplink);
+      window.setTimeout(() => {
+        window.location.assign(upiDeeplink);
+        setAppHint("If GPay did not open on iPhone, choose GPay from UPI options.");
+      }, 900);
+      return;
+    }
+
+    window.location.assign(gpayDeeplink);
     window.setTimeout(() => {
-      window.location.href = upiDeeplink;
-      setAppHint("If GPay does not open on this device/browser, use UPI App or scan QR.");
+      setAppHint("If GPay does not open on this device/browser, use UPI App button.");
     }, 900);
   };
 
@@ -196,7 +221,7 @@ export function PaymentModal({ product, isOpen, onClose }: PaymentModalProps) {
       <div className="relative bg-card rounded-2xl shadow-modal w-full max-w-md max-h-[92vh] overflow-y-auto animate-scale-in pb-[max(1rem,env(safe-area-inset-bottom))]">
         <div className="sticky top-0 z-10 bg-card border-b border-border p-4 flex items-center justify-between rounded-t-2xl">
           <h2 className="font-heading font-bold text-lg text-foreground">Secure Payment Confirmation</h2>
-          <Button variant="ghost" size="icon" onClick={handleClose}>
+          <Button type="button" variant="ghost" size="icon" onClick={handleClose}>
             <X className="h-5 w-5" />
           </Button>
         </div>
@@ -255,15 +280,15 @@ export function PaymentModal({ product, isOpen, onClose }: PaymentModalProps) {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-            <Button variant="outline" className="gap-2" onClick={() => openDeeplink(upiDeeplink)}>
+            <Button type="button" variant="outline" className="gap-2" onClick={() => openDeeplink(upiDeeplink)}>
               <Smartphone className="h-4 w-4" />
               UPI App
             </Button>
-            <Button variant="outline" className="gap-2" onClick={openGPay}>
+            <Button type="button" variant="outline" className="gap-2" onClick={openGPay}>
               <Smartphone className="h-4 w-4" />
               GPay
             </Button>
-            <Button variant="outline" className="gap-2" onClick={openPhonePe}>
+            <Button type="button" variant="outline" className="gap-2" onClick={openPhonePe}>
               <Smartphone className="h-4 w-4" />
               PhonePe
             </Button>
@@ -321,7 +346,7 @@ export function PaymentModal({ product, isOpen, onClose }: PaymentModalProps) {
             </div>
           </div>
 
-          <Button className="w-full gap-2 h-11 text-sm sm:text-base" onClick={handleWhatsApp} disabled={!canSubmit}>
+          <Button type="button" className="w-full gap-2 h-11 text-sm sm:text-base" onClick={handleWhatsApp} disabled={!canSubmit}>
             <MessageCircle className="h-5 w-5" />
             Submit UTR on WhatsApp
           </Button>
