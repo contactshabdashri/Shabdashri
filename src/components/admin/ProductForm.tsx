@@ -14,7 +14,7 @@ import {
 import { createProduct, updateProduct, type ProductInsert, type Product } from "@/lib/supabase/products";
 import { getCategories, type Category } from "@/lib/supabase/categories";
 import { getSubcategories, type Subcategory } from "@/lib/supabase/subcategories";
-import { uploadProductImage } from "@/lib/supabase/storage";
+import { uploadProductImage } from "@/lib/uploads/product-images";
 
 interface ProductFormProps {
   product?: Product;
@@ -174,7 +174,7 @@ export function ProductForm({ product, onSuccess, onCancel }: ProductFormProps) 
           console.error("Error uploading image:", error);
           alert(
             error.message ||
-              "Failed to upload image. Please check your Supabase Storage setup."
+              "Failed to upload image. Please check your GoDaddy media storage settings."
           );
           setUploading(false);
           setLoading(false);
@@ -354,7 +354,7 @@ export function ProductForm({ product, onSuccess, onCancel }: ProductFormProps) 
             size="sm"
             onClick={() => handleImageMethodChange("upload")}
           >
-            Upload Image
+            Use File Upload
           </Button>
         </div>
 
@@ -396,7 +396,9 @@ export function ProductForm({ product, onSuccess, onCancel }: ProductFormProps) 
             />
             {!selectedFile && (
               <p className="text-sm text-gray-500 mt-1">
-                Please select an image file (max 5MB)
+                Please select an image file (max 5MB). The upload happens when you click
+                {` `}
+                {product ? "Update Product" : "Create Product"}.
               </p>
             )}
             {selectedFile && (
