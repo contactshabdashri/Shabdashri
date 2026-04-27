@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { optimizeImageForUpload } from "@/lib/uploads/optimize-image";
 
 interface UploadImageResponse {
   url?: string;
@@ -6,7 +7,7 @@ interface UploadImageResponse {
 }
 
 const MEDIA_UPLOAD_URL = "/api/upload-image";
-const UPLOAD_REQUEST_TIMEOUT_MS = 60_000;
+const UPLOAD_REQUEST_TIMEOUT_MS = 65_000;
 
 export async function uploadProductImage(
   file: File,
@@ -22,8 +23,9 @@ export async function uploadProductImage(
     throw new Error("Your admin session has expired. Please log in again.");
   }
 
+  const { file: preparedFile } = await optimizeImageForUpload(file);
   const formData = new FormData();
-  formData.append("file", file);
+  formData.append("file", preparedFile, preparedFile.name);
   if (productId) {
     formData.append("productId", productId);
   }
@@ -44,7 +46,7 @@ export async function uploadProductImage(
   } catch (error: any) {
     if (error?.name === "AbortError") {
       throw new Error(
-        "Image upload timed out after 60 seconds. Check the GoDaddy upload API settings and server logs."
+        "Image upload timed out before the GoDaddy server responded. Check the GoDaddy upload API and PHP server logs."
       );
     }
 

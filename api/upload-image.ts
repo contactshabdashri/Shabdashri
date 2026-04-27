@@ -2,7 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 
 const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024;
 const ALLOWED_MIME_PREFIX = "image/";
-const UPSTREAM_UPLOAD_TIMEOUT_MS = 45_000;
+const UPSTREAM_UPLOAD_TIMEOUT_MS = 55_000;
 const DEFAULT_UPLOAD_API_URL = "https://media.graphicvishwa.com/api/upload-image.php";
 
 interface UploadApiResponse {
@@ -76,6 +76,7 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, errorMessa
 
 export const config = {
   runtime: "nodejs",
+  maxDuration: 60,
 };
 
 export default async function handler(request: Request) {
@@ -138,11 +139,12 @@ export default async function handler(request: Request) {
         method: "POST",
         headers: {
           Authorization: `Bearer ${uploadSecret}`,
+          Accept: "application/json",
         },
         body: upstreamFormData,
       }),
       UPSTREAM_UPLOAD_TIMEOUT_MS,
-      "Timed out sending the upload to GoDaddy."
+      "Timed out waiting for the GoDaddy upload server."
     );
 
     const payload = (await upstreamResponse.json().catch(() => null)) as
