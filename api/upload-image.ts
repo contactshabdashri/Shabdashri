@@ -5,7 +5,9 @@ import path from "node:path";
 
 const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024;
 const ALLOWED_MIME_PREFIX = "image/";
-const FTP_TIMEOUT_MS = 20_000;
+const FTP_CONNECT_TIMEOUT_MS = 12_000;
+const FTP_PREPARE_TIMEOUT_MS = 8_000;
+const FTP_UPLOAD_TIMEOUT_MS = 20_000;
 
 function getRequiredEnv(name: string): string {
   const value = process.env[name];
@@ -62,6 +64,42 @@ function joinUrl(baseUrl: string, fileName: string): string {
   return `${baseUrl.replace(/\/+$/, "")}/${fileName}`;
 }
 
+function normalizePosixDirectory(directory: string): string {
+  const trimmed = directory.trim().replace(/\\/g, "/");
+  const normalized = path.posix.normalize(trimmed.startsWith("/") ? trimmed : `/${trimmed}`);
+
+  return normalized === "." ? "/" : normalized.replace(/\/+$/, "") || "/";
+}
+
+function isPlaceholderDirectory(directory: string): boolean {
+  return directory.includes("...");
+}
+
+function buildRemoteDirectoryCandidates(
+  configuredDirectory: string | undefined,
+  publicBaseUrl: string
+): string[] {
+  const candidates = new Set<string>();
+  const configuredValue = configuredDirectory?.trim();
+
+  if (configuredValue && !isPlaceholderDirectory(configuredValue)) {
+    candidates.add(normalizePosixDirectory(configuredValue));
+  }
+
+  const publicUrl = new URL(publicBaseUrl);
+  const publicPath = normalizePosixDirectory(publicUrl.pathname);
+
+  if (publicPath !== "/") {
+    candidates.add(publicPath);
+    candidates.add(normalizePosixDirectory(`/public_html${publicPath}`));
+    candidates.add(
+      normalizePosixDirectory(`/public_html/${publicUrl.hostname}${publicPath}`)
+    );
+  }
+
+  return Array.from(candidates);
+}
+
 function jsonResponse(body: Record<string, string>, status: number) {
   return new Response(JSON.stringify(body), {
     status,
@@ -87,6 +125,25 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, errorMessa
       clearTimeout(timeoutHandle);
     }
   }
+}
+
+async function tryUploadToDirectory(
+  ftpClient: Client,
+  directory: string,
+  fileName: string,
+  fileBuffer: Buffer
+) {
+  await withTimeout(
+    ftpClient.ensureDir(directory),
+    FTP_PREPARE_TIMEOUT_MS,
+    `Timed out preparing FTP directory: ${directory}`
+  );
+
+  await withTimeout(
+    ftpClient.uploadFrom(Readable.from(fileBuffer), path.posix.join(directory, fileName)),
+    FTP_UPLOAD_TIMEOUT_MS,
+    `Timed out uploading file to FTP directory: ${directory}`
+  );
 }
 
 export const config = {
@@ -146,11 +203,18 @@ export default async function handler(request: Request) {
     const ftpUser = getRequiredEnv("GODADDY_FTP_USER");
     const ftpPassword = getRequiredEnv("GODADDY_FTP_PASSWORD");
     const publicBaseUrl = getRequiredEnv("GODADDY_PUBLIC_BASE_URL");
-    const remoteDirectory =
-      process.env.GODADDY_FTP_REMOTE_DIR ??
-      "/public_html/media.graphicvishwa.com/uploads/products";
     const ftpPort = Number(process.env.GODADDY_FTP_PORT ?? 21);
     const secure = (process.env.GODADDY_FTP_SECURE ?? "true").toLowerCase() !== "false";
+    const remoteDirectoryCandidates = buildRemoteDirectoryCandidates(
+      process.env.GODADDY_FTP_REMOTE_DIR,
+      publicBaseUrl
+    );
+
+    if (remoteDirectoryCandidates.length === 0) {
+      throw new Error(
+        "No valid FTP upload directory could be determined. Set GODADDY_FTP_REMOTE_DIR or use a public base URL with an upload path."
+      );
+    }
 
     const fileName = buildFileName(
       file.name,
@@ -160,7 +224,7 @@ export default async function handler(request: Request) {
     const fileBuffer = Buffer.from(await file.arrayBuffer());
     const ftpClient = new Client();
     ftpClient.ftp.verbose = false;
-    ftpClient.ftp.timeout = FTP_TIMEOUT_MS;
+    ftpClient.ftp.timeout = FTP_UPLOAD_TIMEOUT_MS;
 
     try {
       await withTimeout(
@@ -171,33 +235,38 @@ export default async function handler(request: Request) {
           password: ftpPassword,
           secure,
         }),
-        FTP_TIMEOUT_MS,
+        FTP_CONNECT_TIMEOUT_MS,
         "Timed out connecting to GoDaddy FTP."
       );
 
-      await withTimeout(
-        ftpClient.ensureDir(remoteDirectory),
-        FTP_TIMEOUT_MS,
-        "Timed out preparing the GoDaddy upload directory."
-      );
-      await withTimeout(
-        ftpClient.uploadFrom(
-          Readable.from(fileBuffer),
-          path.posix.join(remoteDirectory, fileName)
-        ),
-        FTP_TIMEOUT_MS,
-        "Timed out uploading the file to GoDaddy."
+      let uploadError: Error | null = null;
+
+      for (const remoteDirectory of remoteDirectoryCandidates) {
+        try {
+          await tryUploadToDirectory(ftpClient, remoteDirectory, fileName, fileBuffer);
+          return jsonResponse({ url: joinUrl(publicBaseUrl, fileName) }, 200);
+        } catch (error) {
+          uploadError =
+            error instanceof Error ? error : new Error("Unknown FTP upload failure.");
+          console.error(`FTP upload attempt failed for "${remoteDirectory}":`, uploadError);
+        }
+      }
+
+      throw new Error(
+        `FTP upload failed for all directory candidates: ${remoteDirectoryCandidates.join(", ")}. Last error: ${uploadError?.message ?? "unknown error"}`
       );
     } finally {
       ftpClient.close();
     }
-
-    return jsonResponse({ url: joinUrl(publicBaseUrl, fileName) }, 200);
   } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Image upload failed. Check GoDaddy FTP and Vercel environment settings.";
     console.error("Image upload API error:", error);
 
     return jsonResponse(
-      { error: "Image upload failed. Check GoDaddy FTP and Vercel environment settings." },
+      { error: message },
       500
     );
   }

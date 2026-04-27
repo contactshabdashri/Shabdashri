@@ -6,7 +6,7 @@ interface UploadImageResponse {
 }
 
 const MEDIA_UPLOAD_URL = "/api/upload-image";
-const UPLOAD_REQUEST_TIMEOUT_MS = 30_000;
+const UPLOAD_REQUEST_TIMEOUT_MS = 60_000;
 
 export async function uploadProductImage(
   file: File,
@@ -44,7 +44,7 @@ export async function uploadProductImage(
   } catch (error: any) {
     if (error?.name === "AbortError") {
       throw new Error(
-        "Image upload timed out after 30 seconds. Check the GoDaddy FTP settings and server logs."
+        "Image upload timed out after 60 seconds. Check the GoDaddy FTP settings and server logs."
       );
     }
 
