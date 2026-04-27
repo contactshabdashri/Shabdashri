@@ -44,7 +44,7 @@ export async function uploadProductImage(
   } catch (error: any) {
     if (error?.name === "AbortError") {
       throw new Error(
-        "Image upload timed out after 60 seconds. Check the GoDaddy FTP settings and server logs."
+        "Image upload timed out after 60 seconds. Check the GoDaddy upload API settings and server logs."
       );
     }
 
