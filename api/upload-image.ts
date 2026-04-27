@@ -5,6 +5,7 @@ import path from "node:path";
 
 const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024;
 const ALLOWED_MIME_PREFIX = "image/";
+const FTP_TIMEOUT_MS = 20_000;
 
 function getRequiredEnv(name: string): string {
   const value = process.env[name];
@@ -68,6 +69,24 @@ function jsonResponse(body: Record<string, string>, status: number) {
       "Content-Type": "application/json",
     },
   });
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, errorMessage: string) {
+  let timeoutHandle: NodeJS.Timeout | undefined;
+
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutHandle = setTimeout(() => {
+      reject(new Error(errorMessage));
+    }, timeoutMs);
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+  }
 }
 
 export const config = {
@@ -141,20 +160,33 @@ export default async function handler(request: Request) {
     const fileBuffer = Buffer.from(await file.arrayBuffer());
     const ftpClient = new Client();
     ftpClient.ftp.verbose = false;
+    ftpClient.ftp.timeout = FTP_TIMEOUT_MS;
 
     try {
-      await ftpClient.access({
-        host: ftpHost,
-        port: ftpPort,
-        user: ftpUser,
-        password: ftpPassword,
-        secure,
-      });
+      await withTimeout(
+        ftpClient.access({
+          host: ftpHost,
+          port: ftpPort,
+          user: ftpUser,
+          password: ftpPassword,
+          secure,
+        }),
+        FTP_TIMEOUT_MS,
+        "Timed out connecting to GoDaddy FTP."
+      );
 
-      await ftpClient.ensureDir(remoteDirectory);
-      await ftpClient.uploadFrom(
-        Readable.from(fileBuffer),
-        path.posix.join(remoteDirectory, fileName)
+      await withTimeout(
+        ftpClient.ensureDir(remoteDirectory),
+        FTP_TIMEOUT_MS,
+        "Timed out preparing the GoDaddy upload directory."
+      );
+      await withTimeout(
+        ftpClient.uploadFrom(
+          Readable.from(fileBuffer),
+          path.posix.join(remoteDirectory, fileName)
+        ),
+        FTP_TIMEOUT_MS,
+        "Timed out uploading the file to GoDaddy."
       );
     } finally {
       ftpClient.close();
