@@ -10,6 +10,7 @@ import { getSubcategoryById } from "@/lib/supabase/subcategories";
 import type { Product } from "@/lib/supabase/products";
 import type { Category } from "@/lib/supabase/categories";
 import type { Subcategory } from "@/lib/supabase/subcategories";
+import { getProductImageFallback, resolveProductImageUrl } from "@/lib/image-url";
 
 // Convert DB product to frontend format
 function convertProduct(dbProduct: Product): any {
@@ -148,9 +149,12 @@ export default function ProductDetail() {
             {/* Image */}
             <div className="bg-card rounded-2xl overflow-hidden shadow-card">
               <img
-                src={convertedProduct.previewImage}
+                src={resolveProductImageUrl(convertedProduct.previewImage)}
                 alt={convertedProduct.title}
                 className="w-full aspect-square object-cover"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = getProductImageFallback();
+                }}
               />
             </div>
 

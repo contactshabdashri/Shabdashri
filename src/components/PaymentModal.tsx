@@ -10,6 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import type { Product } from "@/data/products";
 import { getUPIId } from "@/lib/upi";
+import { getProductImageFallback, resolveProductImageUrl } from "@/lib/image-url";
 import {
   createGatewayOrder,
   getGatewayPaymentStatus,
@@ -348,9 +349,12 @@ export function PaymentModal({ product, isOpen, onClose }: PaymentModalProps) {
 
           <div className="flex gap-3 p-3 bg-secondary rounded-xl">
             <img
-              src={product.previewImage}
+              src={resolveProductImageUrl(product.previewImage)}
               alt={product.title}
               className="w-14 h-14 sm:w-16 sm:h-16 rounded-lg object-cover"
+              onError={(e) => {
+                (e.target as HTMLImageElement).src = getProductImageFallback();
+              }}
             />
             <div className="min-w-0 flex-1">
               <h3 className="font-semibold text-foreground line-clamp-2">{product.title}</h3>

@@ -32,6 +32,7 @@ import { getProducts, deleteProduct, type Product } from "@/lib/supabase/product
 import { getCategories, type Category } from "@/lib/supabase/categories";
 import { getSubcategories, type Subcategory } from "@/lib/supabase/subcategories";
 import { ProductForm } from "@/components/admin/ProductForm";
+import { getProductImageFallback, resolveProductImageUrl } from "@/lib/image-url";
 
 export default function Products() {
   const navigate = useNavigate();
@@ -196,12 +197,12 @@ export default function Products() {
                       <TableRow key={product.id}>
                         <TableCell>
                           <img
-                            src={product.preview_image}
+                            src={resolveProductImageUrl(product.preview_image)}
                             alt={product.title}
                             className="w-16 h-16 object-cover rounded"
                             onError={(e) => {
                               (e.target as HTMLImageElement).src =
-                                "https://via.placeholder.com/64";
+                                getProductImageFallback();
                             }}
                           />
                         </TableCell>

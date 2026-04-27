@@ -4,6 +4,7 @@ import { ShoppingCart } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { Product, Category } from "@/data/products";
 import { getCategories } from "@/data/products";
+import { getProductImageFallback, resolveProductImageUrl } from "@/lib/image-url";
 
 interface ProductCardProps {
   product: Product;
@@ -27,10 +28,13 @@ export function ProductCard({ product, onBuyClick }: ProductCardProps) {
       <Link to={`/product/${product.id}`} className="block">
         <div className="relative aspect-square overflow-hidden bg-secondary">
           <img
-            src={product.previewImage}
+            src={resolveProductImageUrl(product.previewImage)}
             alt={product.title}
             className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
             loading="lazy"
+            onError={(e) => {
+              (e.target as HTMLImageElement).src = getProductImageFallback();
+            }}
           />
           <div className="absolute top-3 right-3">
             <span className="bg-primary text-primary-foreground px-3 py-1 rounded-full text-sm font-bold shadow-lg">

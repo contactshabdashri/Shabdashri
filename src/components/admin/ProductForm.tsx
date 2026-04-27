@@ -15,6 +15,7 @@ import { createProduct, updateProduct, type ProductInsert, type Product } from "
 import { getCategories, type Category } from "@/lib/supabase/categories";
 import { getSubcategories, type Subcategory } from "@/lib/supabase/subcategories";
 import { uploadProductImage } from "@/lib/uploads/product-images";
+import { getProductImageFallback, resolveProductImageUrl } from "@/lib/image-url";
 
 interface ProductFormProps {
   product?: Product;
@@ -104,7 +105,7 @@ export function ProductForm({ product, onSuccess, onCancel }: ProductFormProps) 
     // Set preview URL from product or form value
     const imageUrl = watch("preview_image");
     if (imageUrl && imageMethod === "url") {
-      setPreviewUrl(imageUrl);
+      setPreviewUrl(resolveProductImageUrl(imageUrl));
     } else if (selectedFile && imageMethod === "upload") {
       const url = URL.createObjectURL(selectedFile);
       setPreviewUrl(url);
@@ -419,7 +420,7 @@ export function ProductForm({ product, onSuccess, onCancel }: ProductFormProps) 
                 alt="Preview"
                 className="w-48 h-48 object-cover rounded border"
                 onError={(e) => {
-                  (e.target as HTMLImageElement).style.display = "none";
+                  (e.target as HTMLImageElement).src = getProductImageFallback();
                 }}
               />
             </div>
