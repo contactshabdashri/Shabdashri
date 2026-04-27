@@ -1,3 +1,6 @@
+import { readFile } from "node:fs/promises";
+import type { VercelRequest, VercelResponse } from "@vercel/node";
+import formidable, { type File as FormidableFile } from "formidable";
 import { createClient } from "@supabase/supabase-js";
 
 const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024;
@@ -47,13 +50,8 @@ function getAllowedAdminEmails(): string[] {
     .filter(Boolean);
 }
 
-function jsonResponse(body: Record<string, string>, status: number) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: {
-      "Content-Type": "application/json",
-    },
-  });
+function sendJson(response: VercelResponse, body: Record<string, string>, status: number) {
+  return response.status(status).json(body);
 }
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, errorMessage: string) {
@@ -74,24 +72,54 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, errorMessa
   }
 }
 
+function parseMultipartForm(request: VercelRequest): Promise<FormidableFile> {
+  const form = formidable({
+    multiples: false,
+    maxFiles: 1,
+    maxFileSize: MAX_FILE_SIZE_BYTES,
+    filter: ({ mimetype }) => Boolean(mimetype?.startsWith(ALLOWED_MIME_PREFIX)),
+  });
+
+  return new Promise((resolve, reject) => {
+    form.parse(request, (error, _fields, files) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      const uploaded = files.file;
+      const file = Array.isArray(uploaded) ? uploaded[0] : uploaded;
+
+      if (!file) {
+        reject(new Error("Image file is required."));
+        return;
+      }
+
+      resolve(file);
+    });
+  });
+}
+
 export const config = {
-  runtime: "nodejs",
+  api: {
+    bodyParser: false,
+  },
   maxDuration: 60,
 };
 
-export default async function handler(request: Request) {
+export default async function handler(request: VercelRequest, response: VercelResponse) {
   if (request.method !== "POST") {
-    return jsonResponse({ error: "Method not allowed." }, 405);
+    return sendJson(response, { error: "Method not allowed." }, 405);
   }
 
   try {
-    const authorizationHeader = request.headers.get("authorization");
+    const authorizationHeader = request.headers.authorization;
     const accessToken = authorizationHeader?.startsWith("Bearer ")
       ? authorizationHeader.slice("Bearer ".length)
       : null;
 
     if (!accessToken) {
-      return jsonResponse({ error: "Missing admin session token." }, 401);
+      return sendJson(response, { error: "Missing admin session token." }, 401);
     }
 
     const supabase = getSupabaseServerClient();
@@ -101,7 +129,7 @@ export default async function handler(request: Request) {
     } = await supabase.auth.getUser(accessToken);
 
     if (authError || !user) {
-      return jsonResponse({ error: "Unauthorized upload request." }, 401);
+      return sendJson(response, { error: "Unauthorized upload request." }, 401);
     }
 
     const allowedAdminEmails = getAllowedAdminEmails();
@@ -109,30 +137,30 @@ export default async function handler(request: Request) {
       allowedAdminEmails.length > 0 &&
       (!user.email || !allowedAdminEmails.includes(user.email.toLowerCase()))
     ) {
-      return jsonResponse({ error: "Your account is not allowed to upload images." }, 403);
+      return sendJson(response, { error: "Your account is not allowed to upload images." }, 403);
     }
 
-    const formData = await request.formData();
-    const file = formData.get("file");
+    const file = await parseMultipartForm(request);
 
-    if (!(file instanceof File)) {
-      return jsonResponse({ error: "Image file is required." }, 400);
-    }
-
-    if (!file.type.startsWith(ALLOWED_MIME_PREFIX)) {
-      return jsonResponse({ error: "Only image uploads are allowed." }, 400);
+    if (!file.mimetype?.startsWith(ALLOWED_MIME_PREFIX)) {
+      return sendJson(response, { error: "Only image uploads are allowed." }, 400);
     }
 
     if (file.size > MAX_FILE_SIZE_BYTES) {
-      return jsonResponse({ error: "Image must be smaller than 5 MB." }, 400);
+      return sendJson(response, { error: "Image must be smaller than 5 MB." }, 400);
     }
 
+    const fileBuffer = await readFile(file.filepath);
     const uploadApiUrl =
       process.env.GODADDY_UPLOAD_API_URL?.trim() || DEFAULT_UPLOAD_API_URL;
     const uploadSecret = getRequiredEnv("SECRET_KEY");
 
     const upstreamFormData = new FormData();
-    upstreamFormData.append("file", file, file.name);
+    upstreamFormData.append(
+      "file",
+      new Blob([fileBuffer], { type: file.mimetype || "application/octet-stream" }),
+      file.originalFilename || "upload-image"
+    );
 
     const upstreamResponse = await withTimeout(
       fetch(uploadApiUrl, {
@@ -155,14 +183,23 @@ export default async function handler(request: Request) {
       throw new Error(payload?.error || "GoDaddy upload endpoint did not return a file URL.");
     }
 
-    return jsonResponse({ url: payload.url }, 200);
-  } catch (error) {
+    return sendJson(response, { url: payload.url }, 200);
+  } catch (error: any) {
+    console.error("Image upload API error:", error);
+
+    if (error?.code === 1009 || error?.httpCode === 413) {
+      return sendJson(response, { error: "Image must be smaller than 5 MB." }, 400);
+    }
+
+    if (error?.message?.includes("options.filter")) {
+      return sendJson(response, { error: "Only image uploads are allowed." }, 400);
+    }
+
     const message =
       error instanceof Error
         ? error.message
         : "Image upload failed. Check GoDaddy upload API settings and server logs.";
-    console.error("Image upload API error:", error);
 
-    return jsonResponse({ error: message }, 500);
+    return sendJson(response, { error: message }, 500);
   }
 }
